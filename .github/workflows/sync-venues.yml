@@ -1,0 +1,32 @@
+name: Sync NUSMods Venues
+
+on:
+  schedule:
+    - cron: '0 18 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-nusmods-venues
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run action
+        uses: alieron/sync-path-pr-action@v0.0.0-test.1
+        with:
+          source-repo: https://github.com/nusmodifications/nusmods.git
+          source-ref: master
+          source-path: website/src/data/
+          target-ref: master
+          target-path: public/data/
+          files: |
+            venues.json
