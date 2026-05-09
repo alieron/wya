@@ -49,7 +49,7 @@ type SetState = React.Dispatch<React.SetStateAction<AppState>>;
 
 export async function loadVenues(setState: SetState): Promise<void> {
   try {
-    const res = await fetch('/data/venues.json');
+    const res = await fetch(`${import.meta.env.BASE_URL}data/venues.json`);
     const venues = await res.json();
     setState(s => ({ ...s, venueLocations: venues, venueLoaded: true }));
   } catch (e) {
