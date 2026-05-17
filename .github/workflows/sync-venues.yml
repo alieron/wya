@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  test:
+  sync:
     runs-on: ubuntu-latest
 
     steps:
