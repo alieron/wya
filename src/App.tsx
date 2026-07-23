@@ -481,14 +481,27 @@ export default function App() {
       <main className="flex h-full min-h-0 min-w-0 flex-col">
         <section className="relative min-h-[180px] flex-1 overflow-hidden">
           <MapView markers={mapMarkers} />
-          <button
-            type="button"
-            onClick={openAddModal}
-            className="absolute right-4 top-4 z-[1000] flex items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]/95 px-3 py-2 text-sm font-medium text-[var(--color-txt)] shadow-[0_8px_24px_rgba(0,0,0,0.24)] backdrop-blur transition hover:border-[var(--color-scrub)] hover:text-[var(--color-scrub)]"
-          >
-            <UserPlus size={16} strokeWidth={2} />
-            + Add person
-          </button>
+          <div className="pointer-events-none absolute left-3 right-3 top-3 z-[1000] flex items-start justify-between gap-3 sm:left-4 sm:right-4 sm:top-4">
+            <div className="pointer-events-auto min-w-0 rounded-md border border-white/10 bg-[var(--color-surface)]/92 px-3 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.24)] backdrop-blur">
+              <div className="text-[10px] font-semibold uppercase text-[var(--color-txt-muted)]">
+                wya
+              </div>
+              <div className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-[var(--color-txt-dim)]">
+                <span className="font-semibold text-[var(--color-txt)]">{selectedDay}</span>
+                <span>{formatTime(selectedTime)}</span>
+                <span>{busyCount} busy</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={openAddModal}
+              className="pointer-events-auto flex h-10 shrink-0 items-center gap-2 rounded-md border border-white/10 bg-[var(--color-surface)]/92 px-3 text-sm font-medium text-[var(--color-txt)] shadow-[0_10px_30px_rgba(0,0,0,0.24)] backdrop-blur transition hover:border-[var(--color-scrub)] hover:text-[var(--color-scrub)]"
+            >
+              <UserPlus size={16} strokeWidth={2} />
+              <span className="hidden sm:inline">Add person</span>
+            </button>
+          </div>
         </section>
 
         <Timeline
