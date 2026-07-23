@@ -4,7 +4,12 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 import {
   DAYS,
   formatMinutes,
@@ -24,11 +29,9 @@ import AddStudentModal from './AddStudentModal';
 const DAY_START = 8 * 60;
 const DAY_END = 22 * 60;
 const TOTAL_MINUTES = DAY_END - DAY_START;
-const TIMELINE_MIN_HEIGHT = 156;
-const TIMELINE_MAX_HEIGHT = 430;
-
-const TIME_MARKS = Array.from({ length: (DAY_END - DAY_START) / 60 + 1 }, (_, i) => (
-  DAY_START + i * 60
+const MOBILE_TIMELINE_WIDTH = 1120;
+const TIME_MARKS = Array.from({ length: TOTAL_MINUTES / 60 + 1 }, (_, index) => (
+  DAY_START + index * 60
 ));
 
 interface Schedule {
@@ -36,16 +39,16 @@ interface Schedule {
   slots: ResolvedSlot[];
 }
 
-interface DaySchedule {
+interface TimelineRow {
   student: Student;
-  slots: ResolvedSlot[];
+  daySlots: ResolvedSlot[];
+  active: boolean;
 }
 
-interface TimelineProps {
+interface ScheduleDockProps {
   schedules: Schedule[];
   selectedDay: Day;
   selectedTime: string;
-  height: number;
   busyCount: number;
   freeCount: number;
   onSelectDay: (day: Day) => void;
@@ -53,7 +56,6 @@ interface TimelineProps {
   onJumpToNow: () => void;
   onEditPerson: (id: string) => void;
   onDeletePerson: (id: string) => void;
-  onResizeStart: () => void;
 }
 
 function todayAsDay(): Day {
@@ -63,14 +65,15 @@ function todayAsDay(): Day {
 
 function currentTime(): string {
   const now = new Date();
-  const mins = now.getHours() * 60 + now.getMinutes();
-  const clamped = Math.min(DAY_END, Math.max(DAY_START, mins));
-  return minutesToTime(clamped);
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  return minutesToTime(Math.min(DAY_END, Math.max(DAY_START, minutes)));
 }
 
 function atTime(slots: ResolvedSlot[], time: string): ResolvedSlot[] {
-  const t = timeToMinutes(time);
-  return slots.filter((slot) => timeToMinutes(slot.startTime) <= t && timeToMinutes(slot.endTime) > t);
+  const minutes = timeToMinutes(time);
+  return slots.filter((slot) => (
+    timeToMinutes(slot.startTime) <= minutes && timeToMinutes(slot.endTime) > minutes
+  ));
 }
 
 function clampTimelineMinutes(minutes: number): number {
@@ -79,16 +82,6 @@ function clampTimelineMinutes(minutes: number): number {
 
 function timelinePercent(minutes: number): number {
   return ((clampTimelineMinutes(minutes) - DAY_START) / TOTAL_MINUTES) * 100;
-}
-
-function pickTimelineTime(
-  event: React.PointerEvent<HTMLDivElement> | React.MouseEvent<HTMLDivElement>,
-  onSelectTime: (time: string) => void,
-) {
-  const rect = event.currentTarget.getBoundingClientRect();
-  const ratio = (event.clientX - rect.left) / rect.width;
-  const minutes = Math.round(DAY_START + ratio * TOTAL_MINUTES);
-  onSelectTime(minutesToTime(clampTimelineMinutes(minutes)));
 }
 
 function initials(name: string): string {
@@ -101,11 +94,349 @@ function initials(name: string): string {
     .toUpperCase() || '?';
 }
 
-function Timeline({
+function pickTimelineTime(
+  event: React.PointerEvent<HTMLDivElement>,
+  onSelectTime: (time: string) => void,
+) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const ratio = (event.clientX - rect.left) / rect.width;
+  onSelectTime(minutesToTime(clampTimelineMinutes(Math.round(DAY_START + ratio * TOTAL_MINUTES))));
+}
+
+function PersonLabel({
+  student,
+  active,
+  mobile = false,
+  onEdit,
+  onDelete,
+}: {
+  student: Student;
+  active: boolean;
+  mobile?: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className={cn(
+      'group flex min-w-0 items-center gap-2',
+      mobile && 'h-10 w-36 rounded-lg border bg-card/95 px-1.5 shadow-sm backdrop-blur-sm',
+    )}>
+      <Avatar size="sm">
+        <AvatarFallback
+          className="text-[9px] font-semibold text-white"
+          style={{ backgroundColor: student.color }}
+        >
+          {initials(student.name)}
+        </AvatarFallback>
+      </Avatar>
+      <span className={cn(
+        'min-w-0 flex-1 truncate text-xs',
+        active ? 'font-semibold text-foreground' : 'text-muted-foreground',
+      )}>
+        {student.name}
+      </span>
+      <span className={cn(
+        'flex shrink-0 items-center',
+        mobile ? '-mr-1' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+      )}>
+        <Tooltip>
+          <TooltipTrigger
+            render={<Button variant="ghost" size="icon-xs" onClick={onEdit} />}
+          >
+            <Settings />
+            <span className="sr-only">Edit {student.name}</span>
+          </TooltipTrigger>
+          <TooltipContent>Edit {student.name}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={<Button variant="ghost" size="icon-xs" onClick={onDelete} />}
+          >
+            <Trash2 />
+            <span className="sr-only">Delete {student.name}</span>
+          </TooltipTrigger>
+          <TooltipContent>Delete {student.name}</TooltipContent>
+        </Tooltip>
+      </span>
+    </div>
+  );
+}
+
+function LessonBlock({
+  slot,
+  student,
+  selectedMinutes,
+  mobile = false,
+}: {
+  slot: ResolvedSlot;
+  student: Student;
+  selectedMinutes: number;
+  mobile?: boolean;
+}) {
+  const start = timeToMinutes(slot.startTime);
+  const end = timeToMinutes(slot.endTime);
+  if (end <= DAY_START || start >= DAY_END) return null;
+
+  const left = timelinePercent(start);
+  const width = Math.max(0.5, timelinePercent(end) - left);
+  const active = start <= selectedMinutes && end > selectedMinutes;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            className={cn(
+              'absolute overflow-hidden rounded-md px-1.5 text-left text-[10px] font-bold text-white outline-offset-2 focus-visible:outline-2 focus-visible:outline-primary',
+              mobile ? 'top-1 h-10' : 'top-1/2 h-5 -translate-y-1/2',
+            )}
+            style={{
+              left: `${left}%`,
+              width: `${width}%`,
+              backgroundColor: student.color,
+              opacity: active ? 1 : 0.72,
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+          />
+        }
+      >
+        <span className="block truncate" aria-hidden="true">{slot.moduleCode}</span>
+        <span className="sr-only">{slot.moduleCode} {slot.lessonType}</span>
+      </TooltipTrigger>
+      <TooltipContent>
+        <div className="flex flex-col gap-0.5">
+          <p className="font-semibold">{slot.moduleCode} {slot.lessonType}</p>
+          <p className="opacity-80">
+            {formatTime(slot.startTime)}-{formatTime(slot.endTime)} · {slot.venue || 'No venue'}
+          </p>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function TimeMarks({ mobile = false }: { mobile?: boolean }) {
+  return TIME_MARKS.map((minutes) => (
+    <div
+      key={minutes}
+      className="absolute top-0 h-full -translate-x-px"
+      style={{ left: `${timelinePercent(minutes)}%` }}
+    >
+      <div className={cn('w-px bg-border', mobile ? 'h-2.5' : 'h-2')} />
+      <div className="mt-1 -translate-x-1/2 font-mono text-[10px] text-muted-foreground">
+        {formatMinutes(minutes)}
+      </div>
+    </div>
+  ));
+}
+
+function DesktopTimeline({
+  rows,
+  selectedMinutes,
+  selectedTime,
+  onSelectTime,
+  onEditPerson,
+  onDeletePerson,
+}: {
+  rows: TimelineRow[];
+  selectedMinutes: number;
+  selectedTime: string;
+  onSelectTime: (time: string) => void;
+  onEditPerson: (id: string) => void;
+  onDeletePerson: (id: string) => void;
+}) {
+  const scrubberLeft = `${timelinePercent(selectedMinutes)}%`;
+
+  function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pickTimelineTime(event, onSelectTime);
+  }
+
+  function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.buttons === 1) pickTimelineTime(event, onSelectTime);
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="hidden min-h-0 flex-1 items-center justify-center px-6 text-center sm:flex">
+        <p className="text-sm text-muted-foreground">
+          No timetables yet. Use <span className="font-medium text-foreground">Add person</span> to get started.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="hidden min-h-0 flex-1 grid-rows-[36px_minmax(0,1fr)] px-4 pb-3 sm:grid">
+      <div className="grid grid-cols-[148px_minmax(0,1fr)] gap-x-3">
+        <div />
+        <div
+          className="relative touch-none"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+        >
+          <TimeMarks />
+          <div
+            className="pointer-events-none absolute inset-y-0 z-30 w-0.5 bg-primary"
+            style={{ left: scrubberLeft }}
+          />
+          <div
+            className="pointer-events-none absolute top-0 z-40 size-3 -translate-x-1/2 rounded-full border-2 border-card bg-primary shadow"
+            style={{ left: scrubberLeft }}
+          />
+          <div
+            className="pointer-events-none absolute top-4 z-40 -translate-x-1/2 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground shadow"
+            style={{ left: scrubberLeft }}
+          >
+            {formatTime(selectedTime)}
+          </div>
+        </div>
+      </div>
+
+      <div className="min-h-0 overflow-y-auto pr-1">
+        {rows.map(({ student, daySlots, active }) => (
+          <div
+            key={student.id}
+            className="grid h-8 grid-cols-[148px_minmax(0,1fr)] items-center gap-x-3"
+          >
+            <PersonLabel
+              student={student}
+              active={active}
+              onEdit={() => onEditPerson(student.id)}
+              onDelete={() => onDeletePerson(student.id)}
+            />
+            <div
+              className="relative h-full touch-none"
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+            >
+              <div className="absolute inset-x-0 top-1/2 h-px bg-border" />
+              <div
+                className="pointer-events-none absolute inset-y-0 z-30 w-0.5 bg-primary"
+                style={{ left: scrubberLeft }}
+              />
+              {daySlots.map((slot) => (
+                <LessonBlock
+                  key={`${slot.moduleCode}-${slot.lessonIndex}`}
+                  slot={slot}
+                  student={student}
+                  selectedMinutes={selectedMinutes}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MobileTimeline({
+  rows,
+  selectedMinutes,
+  selectedTime,
+  onSelectTime,
+  onEditPerson,
+  onDeletePerson,
+}: {
+  rows: TimelineRow[];
+  selectedMinutes: number;
+  selectedTime: string;
+  onSelectTime: (time: string) => void;
+  onEditPerson: (id: string) => void;
+  onDeletePerson: (id: string) => void;
+}) {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const updatingFromScroll = useRef(false);
+
+  useEffect(() => {
+    if (updatingFromScroll.current) {
+      updatingFromScroll.current = false;
+      return;
+    }
+    const scroller = scrollerRef.current;
+    if (scroller) {
+      scroller.scrollLeft = (timelinePercent(selectedMinutes) / 100) * MOBILE_TIMELINE_WIDTH;
+    }
+  }, [selectedMinutes]);
+
+  function onScroll() {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const ratio = Math.min(1, Math.max(0, scroller.scrollLeft / MOBILE_TIMELINE_WIDTH));
+    const nextTime = minutesToTime(Math.round(DAY_START + ratio * TOTAL_MINUTES));
+    if (nextTime === selectedTime) return;
+    updatingFromScroll.current = true;
+    onSelectTime(nextTime);
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center sm:hidden">
+        <p className="max-w-64 text-sm text-muted-foreground">
+          No timetables yet. Use <span className="font-medium text-foreground">Add person</span> above to get started.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative min-h-0 flex-1 overflow-hidden sm:hidden">
+      <div
+        ref={scrollerRef}
+        className="mobile-timeline-scroll h-full max-w-full overflow-auto overscroll-contain"
+        onScroll={onScroll}
+        aria-label="Schedule timeline. Scroll horizontally to select a time."
+        tabIndex={0}
+      >
+        <div className="mobile-timeline-content relative min-h-full">
+          <div className="relative h-10">
+            <div className="mobile-timeline-zone absolute inset-y-0">
+              <TimeMarks mobile />
+            </div>
+          </div>
+          {rows.map(({ student, daySlots, active }) => (
+            <div key={student.id} className="relative h-12">
+              <div className="sticky left-2 z-20 flex h-12 w-fit items-center">
+                <PersonLabel
+                  student={student}
+                  active={active}
+                  mobile
+                  onEdit={() => onEditPerson(student.id)}
+                  onDelete={() => onDeletePerson(student.id)}
+                />
+              </div>
+              <div className="mobile-timeline-zone absolute inset-y-0">
+                <div className="absolute inset-x-0 top-1/2 h-px bg-border" />
+                {daySlots.map((slot) => (
+                  <LessonBlock
+                    key={`${slot.moduleCode}-${slot.lessonIndex}`}
+                    slot={slot}
+                    student={student}
+                    selectedMinutes={selectedMinutes}
+                    mobile
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="pointer-events-none absolute inset-y-0 left-1/2 z-30 w-0.5 -translate-x-1/2 bg-primary" />
+      <div className="pointer-events-none absolute left-1/2 top-0 z-40 size-4 -translate-x-1/2 rounded-full border-2 border-card bg-primary shadow" />
+      <div className="pointer-events-none absolute left-1/2 top-5 z-40 -translate-x-1/2 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground shadow">
+        {formatTime(selectedTime)}
+      </div>
+    </div>
+  );
+}
+
+function ScheduleDock({
   schedules,
   selectedDay,
   selectedTime,
-  height,
   busyCount,
   freeCount,
   onSelectDay,
@@ -113,215 +444,81 @@ function Timeline({
   onJumpToNow,
   onEditPerson,
   onDeletePerson,
-  onResizeStart,
-}: TimelineProps) {
+}: ScheduleDockProps) {
   const selectedMinutes = timeToMinutes(selectedTime);
-  const scrubberLeft = `${timelinePercent(selectedMinutes)}%`;
-  const rows = schedules.map(({ student, slots }) => {
+  const rows: TimelineRow[] = schedules.map(({ student, slots }) => {
     const daySlots = slots.filter((slot) => slot.day === selectedDay);
-    const rowActive = daySlots.some((slot) => {
-      const start = timeToMinutes(slot.startTime);
-      const end = timeToMinutes(slot.endTime);
-      return start <= selectedMinutes && end > selectedMinutes;
-    });
-    return { student, daySlots, rowActive };
+    return {
+      student,
+      daySlots,
+      active: daySlots.some((slot) => (
+        timeToMinutes(slot.startTime) <= selectedMinutes
+        && timeToMinutes(slot.endTime) > selectedMinutes
+      )),
+    };
   });
 
-  function handleTrackPointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    event.currentTarget.setPointerCapture(event.pointerId);
-    pickTimelineTime(event, onSelectTime);
-  }
-
-  function handleTrackPointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    if (event.buttons === 1) pickTimelineTime(event, onSelectTime);
-  }
-
   return (
-    <section
-      className="relative flex shrink-0 flex-col border-t bg-card text-card-foreground"
-      style={{ height }}
-    >
-      <button
-        type="button"
-        aria-label="Resize timeline"
-        title="Resize timeline"
-        onPointerDown={(event) => {
-          event.preventDefault();
-          onResizeStart();
-        }}
-        className="absolute left-0 top-0 z-30 h-2 w-full cursor-row-resize bg-transparent"
-      >
-        <span className="mx-auto mt-[3px] block h-px w-16 rounded-full bg-border" />
-      </button>
+    <section className="schedule-dock z-10 flex flex-col overflow-hidden border bg-card/95 text-card-foreground shadow-2xl backdrop-blur-md" aria-label="Timetable schedule">
+      <header className="grid shrink-0 grid-cols-[1fr_auto] items-center gap-2 border-b px-3 py-3 sm:flex sm:px-4">
+        <ToggleGroup
+          aria-label="Day of week"
+          value={[selectedDay]}
+          onValueChange={(days) => days[0] && onSelectDay(days[0] as Day)}
+          variant="outline"
+          size="sm"
+          spacing={0}
+          className="order-3 col-span-2 grid h-11 w-full grid-cols-6 sm:order-1 sm:flex sm:h-auto sm:w-auto"
+        >
+          {DAYS.map((day) => (
+            <ToggleGroupItem
+              key={day}
+              value={day}
+              aria-label={day}
+              className="h-11 min-w-0 px-1 data-pressed:bg-primary data-pressed:text-primary-foreground sm:h-7 sm:min-w-10 sm:px-2"
+            >
+              <span className="sm:hidden">{day.slice(0, 2)}</span>
+              <span className="hidden sm:inline">{day.slice(0, 3)}</span>
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
 
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-4 pb-3 pt-4">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <ToggleGroup
-            aria-label="Day of week"
-            value={[selectedDay]}
-            onValueChange={(days) => days[0] && onSelectDay(days[0] as Day)}
-            variant="outline"
-            size="sm"
-            spacing={0}
-          >
-            {DAYS.map((day) => (
-              <ToggleGroupItem
-                key={day}
-                value={day}
-                aria-label={day}
-                className="min-w-9 px-2 data-pressed:bg-primary data-pressed:text-primary-foreground"
-              >
-                {day.slice(0, 3)}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onJumpToNow}
+          className="order-2 h-11 sm:order-2 sm:h-7"
+        >
+          <Clock3 data-icon="inline-start" />
+          Now
+        </Button>
 
-          <Button type="button" variant="outline" size="sm" onClick={onJumpToNow}>
-            <Clock3 data-icon="inline-start" />
-            Now
-          </Button>
-        </div>
-
-        <div className="flex min-w-0 items-baseline gap-2 text-sm">
-          <span className="font-mono font-bold text-foreground">
+        <div className="order-1 flex min-w-0 items-center gap-2 sm:order-3 sm:ml-auto" aria-live="polite">
+          <span className="truncate font-mono text-sm font-bold text-foreground sm:text-base">
             {formatTime(selectedTime)}
           </span>
           <Badge variant="secondary">{busyCount} busy</Badge>
-          <Badge variant="outline">{freeCount} free</Badge>
+          <Badge variant="outline" className="hidden min-[360px]:inline-flex">{freeCount} free</Badge>
         </div>
-      </div>
+      </header>
 
-      <div className="min-h-0 flex-1 overflow-hidden px-4 pb-3 pt-2">
-        <div className="grid h-full min-h-0 grid-rows-[38px_minmax(0,1fr)] gap-y-1">
-          <div className="grid grid-cols-[144px_minmax(0,1fr)] gap-x-3">
-            <div />
-            <div
-              className="relative h-[38px] touch-none"
-              onPointerDown={handleTrackPointerDown}
-              onPointerMove={handleTrackPointerMove}
-            >
-              {TIME_MARKS.map((minutes) => (
-                <div
-                  key={minutes}
-                  className="absolute top-0 h-full -translate-x-px"
-                  style={{ left: `${timelinePercent(minutes)}%` }}
-                >
-                  <div className="h-2 w-px bg-border" />
-                  <div className="mt-1 -translate-x-1/2 font-mono text-[10px] text-muted-foreground">
-                    {formatMinutes(minutes)}
-                  </div>
-                </div>
-              ))}
-              <div
-                className="pointer-events-none absolute bottom-0 top-0 z-30 w-0.5 rounded-full"
-                style={{ left: scrubberLeft, backgroundColor: 'var(--primary)' }}
-              />
-              <div
-                className="pointer-events-none absolute top-0 z-40 h-3.5 w-3.5 -translate-x-1/2 rounded-full border-2 shadow"
-                style={{
-                  left: scrubberLeft,
-                  backgroundColor: 'var(--primary)',
-                  borderColor: 'var(--card)',
-                }}
-              />
-              <div
-                className="pointer-events-none absolute top-4 z-40 -translate-x-1/2 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white shadow"
-                style={{ left: scrubberLeft, backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
-              >
-                {formatTime(selectedTime)}
-              </div>
-            </div>
-          </div>
-
-          <div className="min-h-0 overflow-y-auto pr-1">
-            <div className="grid min-h-full grid-cols-[144px_minmax(0,1fr)] gap-x-3">
-              <div className="flex flex-col gap-1.5">
-                {rows.map(({ student, rowActive }) => (
-                  <div key={student.id} className="group flex h-6 min-w-0 items-center gap-2">
-                    <Avatar size="sm">
-                      <AvatarFallback className="text-[9px] font-semibold text-white" style={{ backgroundColor: student.color }}>
-                        {initials(student.name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className={`truncate text-xs ${rowActive ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
-                      {student.name}
-                    </span>
-                    <span className="ml-auto flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
-                      <Tooltip>
-                        <TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => onEditPerson(student.id)} />}>
-                          <Settings />
-                          <span className="sr-only">Edit {student.name}</span>
-                        </TooltipTrigger>
-                        <TooltipContent>Edit {student.name}</TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => onDeletePerson(student.id)} />}>
-                          <Trash2 />
-                          <span className="sr-only">Delete {student.name}</span>
-                        </TooltipTrigger>
-                        <TooltipContent>Delete {student.name}</TooltipContent>
-                      </Tooltip>
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div
-                className="relative flex min-h-full touch-none flex-col gap-1.5"
-                onPointerDown={handleTrackPointerDown}
-                onPointerMove={handleTrackPointerMove}
-              >
-                <div
-                  className="pointer-events-none absolute bottom-0 top-0 z-30 w-0.5 rounded-full"
-                  style={{ left: scrubberLeft, backgroundColor: 'var(--primary)' }}
-                />
-
-                {rows.map(({ student, daySlots }) => (
-                  <div key={student.id} className="relative h-6">
-                    <div className="absolute left-0 right-0 top-1/2 h-px bg-border" />
-                    {daySlots.map((slot) => {
-                      const start = timeToMinutes(slot.startTime);
-                      const end = timeToMinutes(slot.endTime);
-                      if (end <= DAY_START || start >= DAY_END) return null;
-                      const left = timelinePercent(start);
-                      const width = Math.max(0.5, timelinePercent(end) - left);
-                      const isActive = start <= selectedMinutes && end > selectedMinutes;
-
-                      return (
-                        <Tooltip key={`${slot.moduleCode}-${slot.lessonIndex}`}>
-                          <TooltipTrigger
-                            render={
-                              <button
-                                type="button"
-                                className="absolute top-1/2 h-2 -translate-y-1/2 rounded-full outline-offset-2 transition-opacity focus-visible:outline-2 focus-visible:outline-primary"
-                                style={{
-                                  left: `${left}%`,
-                                  width: `${width}%`,
-                                  backgroundColor: student.color,
-                                  opacity: isActive ? 1 : 0.6,
-                                }}
-                              />
-                            }
-                          >
-                            <span className="sr-only">{slot.moduleCode} {slot.lessonType}</span>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="font-semibold">{slot.moduleCode} {slot.lessonType}</p>
-                            <p className="opacity-80">
-                              {formatTime(slot.startTime)}-{formatTime(slot.endTime)} · {slot.venue || 'No venue'}
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-
-            </div>
-          </div>
-        </div>
-      </div>
+      <DesktopTimeline
+        rows={rows}
+        selectedMinutes={selectedMinutes}
+        selectedTime={selectedTime}
+        onSelectTime={onSelectTime}
+        onEditPerson={onEditPerson}
+        onDeletePerson={onDeletePerson}
+      />
+      <MobileTimeline
+        rows={rows}
+        selectedMinutes={selectedMinutes}
+        selectedTime={selectedTime}
+        onSelectTime={onSelectTime}
+        onEditPerson={onEditPerson}
+        onDeletePerson={onDeletePerson}
+      />
     </section>
   );
 }
@@ -332,8 +529,6 @@ export default function App() {
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [selectedDay, setDay] = useState<Day>(() => todayAsDay());
   const [selectedTime, setTime] = useState(() => currentTime());
-  const [timelineHeight, setTimelineHeight] = useState(230);
-  const [resizingTimeline, setResizingTimeline] = useState(false);
   const startedFetches = useRef(new Set<string>());
 
   useEffect(() => {
@@ -352,53 +547,18 @@ export default function App() {
     });
   }, [state.students, state.moduleCache, state.venueLoaded]);
 
-  useEffect(() => {
-    if (!resizingTimeline) return;
-
-    function onPointerMove(event: PointerEvent) {
-      const viewportHeight = window.innerHeight;
-      const upperHeight = Math.max(
-        TIMELINE_MIN_HEIGHT,
-        Math.min(TIMELINE_MAX_HEIGHT, viewportHeight - 180),
-      );
-      const nextHeight = Math.min(
-        upperHeight,
-        Math.max(TIMELINE_MIN_HEIGHT, viewportHeight - event.clientY),
-      );
-      setTimelineHeight(nextHeight);
-    }
-
-    function onPointerUp() {
-      setResizingTimeline(false);
-    }
-
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp, { once: true });
-    return () => {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-    };
-  }, [resizingTimeline]);
-
   const schedules = useMemo(
-    () =>
-      state.students.map((student) => ({
-        student,
-        slots: resolveSchedule(parseNusmodsUrl(student.url), state.moduleCache),
-      })),
+    () => state.students.map((student) => ({
+      student,
+      slots: resolveSchedule(parseNusmodsUrl(student.url), state.moduleCache),
+    })),
     [state.students, state.moduleCache],
   );
 
-  const daySchedules: DaySchedule[] = schedules.map(({ student, slots }) => ({
+  const activeSchedules = schedules.map(({ student, slots }) => ({
     student,
-    slots: slots.filter((slot) => slot.day === selectedDay),
+    slots: atTime(slots.filter((slot) => slot.day === selectedDay), selectedTime),
   }));
-
-  const activeSchedules = daySchedules.map(({ student, slots }) => ({
-    student,
-    slots: atTime(slots, selectedTime),
-  }));
-
   const busyCount = activeSchedules.filter(({ slots }) => slots.length > 0).length;
   const freeCount = state.students.length - busyCount;
 
@@ -445,8 +605,7 @@ export default function App() {
 
   function deleteStudent(id: string) {
     const student = state.students.find((item) => item.id === id);
-    if (!student) return;
-    if (!window.confirm(`Delete ${student.name}?`)) return;
+    if (!student || !window.confirm(`Delete ${student.name}?`)) return;
     removeStudent(id, setState);
     if (editingStudentId === id) closeModal();
   }
@@ -456,26 +615,25 @@ export default function App() {
     : undefined;
 
   return (
-    <div className="h-dvh overflow-hidden bg-background text-foreground">
-      <main className="flex h-full min-h-0 min-w-0 flex-col">
-        <section className="relative min-h-[180px] flex-1 overflow-hidden">
+      <div className="relative isolate h-dvh overflow-hidden bg-background text-foreground">
+        <main className="absolute inset-0 z-0">
           <MapView markers={mapMarkers} />
-          <Button
-            type="button"
-            size="lg"
-            onClick={openAddModal}
-            className="absolute right-4 top-4 z-[1000] h-11 shadow-lg"
-          >
-            <UserPlus data-icon="inline-start" />
-            Add person
-          </Button>
-        </section>
+        </main>
 
-        <Timeline
+        <Button
+          type="button"
+          size="lg"
+          onClick={openAddModal}
+          className="absolute right-3 top-3 z-10 h-11 shadow-lg sm:right-4 sm:top-4"
+        >
+          <UserPlus data-icon="inline-start" />
+          Add person
+        </Button>
+
+        <ScheduleDock
           schedules={schedules}
           selectedDay={selectedDay}
           selectedTime={selectedTime}
-          height={timelineHeight}
           busyCount={busyCount}
           freeCount={freeCount}
           onSelectDay={setDay}
@@ -483,19 +641,17 @@ export default function App() {
           onJumpToNow={jumpToNow}
           onEditPerson={openEditModal}
           onDeletePerson={deleteStudent}
-          onResizeStart={() => setResizingTimeline(true)}
         />
-      </main>
 
-      {showModal && (
-        <AddStudentModal
-          onClose={closeModal}
-          studentCount={state.students.length}
-          student={editingStudent}
-          state={state}
-          setState={setState}
-        />
-      )}
-    </div>
+        {showModal && (
+          <AddStudentModal
+            onClose={closeModal}
+            studentCount={state.students.length}
+            student={editingStudent}
+            state={state}
+            setState={setState}
+          />
+        )}
+      </div>
   );
 }

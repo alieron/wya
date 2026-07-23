@@ -12,7 +12,6 @@ import {
 } from '@/components/ui/dialog';
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Spinner } from '@/components/ui/spinner';
 import { parseNusmodsUrl, defaultColor } from './nusmods';
 import { addStudent, updateStudent } from './store';
 import type { AppState, Student } from './store';
@@ -36,7 +35,6 @@ export default function AddStudentModal({ onClose, studentCount, student, state,
   const [name, setName] = useState(() => student?.name ?? '');
   const [color, setColor] = useState(() => student?.color ?? defaultColor(studentCount));
   const [error, setError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
   const preview = useMemo(() => (url.trim() ? parseNusmodsUrl(url) : null), [url]);
   const previewMods = preview ? Object.keys(preview.modules) : [];
 
@@ -57,24 +55,19 @@ export default function AddStudentModal({ onClose, studentCount, student, state,
     return true;
   }
 
-  async function submit(event: React.FormEvent) {
+  function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!validate() || submitting) return;
-    setSubmitting(true);
-    try {
-      if (student) {
-        updateStudent(student.id, {
-          url: url.trim(),
-          name: name.trim() || student.name,
-          color,
-        }, setState);
-      } else {
-        await addStudent(url, name, color, state, setState);
-      }
-      onClose();
-    } finally {
-      setSubmitting(false);
+    if (!validate()) return;
+    if (student) {
+      updateStudent(student.id, {
+        url: url.trim(),
+        name: name.trim() || student.name,
+        color,
+      }, setState);
+    } else {
+      addStudent(url, name, color, state, setState);
     }
+    onClose();
   }
 
   return (
@@ -158,9 +151,8 @@ export default function AddStudentModal({ onClose, studentCount, student, state,
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting && <Spinner data-icon="inline-start" />}
-              {submitting ? 'Saving' : isEditing ? 'Save person' : 'Add person'}
+            <Button type="submit">
+              {isEditing ? 'Save person' : 'Add person'}
             </Button>
           </DialogFooter>
         </form>
