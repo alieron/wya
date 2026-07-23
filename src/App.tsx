@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Settings, Trash2, UserPlus } from 'lucide-react';
+import { Clock3, Settings, Trash2, UserPlus } from 'lucide-react';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DAYS,
   formatMinutes,
@@ -46,7 +51,6 @@ interface TimelineProps {
   onSelectDay: (day: Day) => void;
   onSelectTime: (time: string) => void;
   onJumpToNow: () => void;
-  onAddPerson: () => void;
   onEditPerson: (id: string) => void;
   onDeletePerson: (id: string) => void;
   onResizeStart: () => void;
@@ -107,18 +111,12 @@ function Timeline({
   onSelectDay,
   onSelectTime,
   onJumpToNow,
-  onAddPerson,
   onEditPerson,
   onDeletePerson,
   onResizeStart,
 }: TimelineProps) {
   const selectedMinutes = timeToMinutes(selectedTime);
   const scrubberLeft = `${timelinePercent(selectedMinutes)}%`;
-  const [hoveredLesson, setHoveredLesson] = useState<{
-    slot: ResolvedSlot;
-    x: number;
-    y: number;
-  } | null>(null);
   const rows = schedules.map(({ student, slots }) => {
     const daySlots = slots.filter((slot) => slot.day === selectedDay);
     const rowActive = daySlots.some((slot) => {
@@ -140,7 +138,7 @@ function Timeline({
 
   return (
     <section
-      className="relative flex shrink-0 flex-col border-t border-[var(--color-border)] bg-[var(--color-surface)]"
+      className="relative flex shrink-0 flex-col border-t bg-card text-card-foreground"
       style={{ height }}
     >
       <button
@@ -153,42 +151,43 @@ function Timeline({
         }}
         className="absolute left-0 top-0 z-30 h-2 w-full cursor-row-resize bg-transparent"
       >
-        <span className="mx-auto mt-[3px] block h-px w-16 rounded-full bg-[var(--color-border2)]" />
+        <span className="mx-auto mt-[3px] block h-px w-16 rounded-full bg-border" />
       </button>
 
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 pb-3 pt-4">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-4 pb-3 pt-4">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <div className="flex rounded-md border border-[var(--color-border)] bg-[var(--color-surface2)] p-0.5">
+          <ToggleGroup
+            aria-label="Day of week"
+            value={[selectedDay]}
+            onValueChange={(days) => days[0] && onSelectDay(days[0] as Day)}
+            variant="outline"
+            size="sm"
+            spacing={0}
+          >
             {DAYS.map((day) => (
-              <button
+              <ToggleGroupItem
                 key={day}
-                type="button"
-                onClick={() => onSelectDay(day)}
-                className={`h-8 min-w-9 rounded px-2 text-xs font-medium transition ${selectedDay === day
-                  ? 'bg-[var(--color-accent)] text-white shadow-sm'
-                  : 'text-[var(--color-txt-dim)] hover:bg-[var(--color-surface)] hover:text-[var(--color-txt)]'}`}
+                value={day}
+                aria-label={day}
+                className="min-w-9 px-2 data-pressed:bg-primary data-pressed:text-primary-foreground"
               >
                 {day.slice(0, 3)}
-              </button>
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
 
-          <button
-            type="button"
-            onClick={onJumpToNow}
-            className="h-9 rounded-md border border-[var(--color-border)] bg-[var(--color-surface2)] px-3 text-xs font-medium text-[var(--color-txt-dim)] transition hover:border-[var(--color-border2)] hover:text-[var(--color-txt)]"
-          >
+          <Button type="button" variant="outline" size="sm" onClick={onJumpToNow}>
+            <Clock3 data-icon="inline-start" />
             Now
-          </button>
+          </Button>
         </div>
 
         <div className="flex min-w-0 items-baseline gap-2 text-sm">
-          <span className="font-semibold text-[var(--color-txt)]">
+          <span className="font-mono font-bold text-foreground">
             {formatTime(selectedTime)}
           </span>
-          <span className="text-[var(--color-txt-dim)]">
-            {busyCount} busy, {freeCount} free
-          </span>
+          <Badge variant="secondary">{busyCount} busy</Badge>
+          <Badge variant="outline">{freeCount} free</Badge>
         </div>
       </div>
 
@@ -207,27 +206,27 @@ function Timeline({
                   className="absolute top-0 h-full -translate-x-px"
                   style={{ left: `${timelinePercent(minutes)}%` }}
                 >
-                  <div className="h-2 w-px bg-[var(--color-border2)]" />
-                  <div className="mt-1 -translate-x-1/2 text-[10px] text-[var(--color-txt-muted)]">
+                  <div className="h-2 w-px bg-border" />
+                  <div className="mt-1 -translate-x-1/2 font-mono text-[10px] text-muted-foreground">
                     {formatMinutes(minutes)}
                   </div>
                 </div>
               ))}
               <div
                 className="pointer-events-none absolute bottom-0 top-0 z-30 w-0.5 rounded-full"
-                style={{ left: scrubberLeft, backgroundColor: 'var(--color-scrub)' }}
+                style={{ left: scrubberLeft, backgroundColor: 'var(--primary)' }}
               />
               <div
                 className="pointer-events-none absolute top-0 z-40 h-3.5 w-3.5 -translate-x-1/2 rounded-full border-2 shadow"
                 style={{
                   left: scrubberLeft,
-                  backgroundColor: 'var(--color-scrub)',
-                  borderColor: 'var(--color-surface)',
+                  backgroundColor: 'var(--primary)',
+                  borderColor: 'var(--card)',
                 }}
               />
               <div
                 className="pointer-events-none absolute top-4 z-40 -translate-x-1/2 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white shadow"
-                style={{ left: scrubberLeft, backgroundColor: 'var(--color-scrub)' }}
+                style={{ left: scrubberLeft, backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
               >
                 {formatTime(selectedTime)}
               </div>
@@ -236,55 +235,50 @@ function Timeline({
 
           <div className="min-h-0 overflow-y-auto pr-1">
             <div className="grid min-h-full grid-cols-[144px_minmax(0,1fr)] gap-x-3">
-              <div className="space-y-1.5">
+              <div className="flex flex-col gap-1.5">
                 {rows.map(({ student, rowActive }) => (
                   <div key={student.id} className="group flex h-6 min-w-0 items-center gap-2">
-                    <span
-                      className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-[9px] font-semibold text-white"
-                      style={{ background: student.color }}
-                    >
-                      {initials(student.name)}
-                    </span>
-                    <span className={`truncate text-xs ${rowActive ? 'font-semibold text-[var(--color-txt)]' : 'text-[var(--color-txt-dim)]'}`}>
+                    <Avatar size="sm">
+                      <AvatarFallback className="text-[9px] font-semibold text-white" style={{ backgroundColor: student.color }}>
+                        {initials(student.name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className={`truncate text-xs ${rowActive ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
                       {student.name}
                     </span>
                     <span className="ml-auto flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
-                      <button
-                        type="button"
-                        onClick={() => onEditPerson(student.id)}
-                        aria-label={`Edit ${student.name}`}
-                        title={`Edit ${student.name}`}
-                        className="grid h-5 w-5 place-items-center rounded text-[var(--color-txt-muted)] transition hover:bg-[var(--color-surface2)] hover:text-[var(--color-scrub)]"
-                      >
-                        <Settings size={13} strokeWidth={2} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onDeletePerson(student.id)}
-                        aria-label={`Delete ${student.name}`}
-                        title={`Delete ${student.name}`}
-                        className="grid h-5 w-5 place-items-center rounded text-[var(--color-txt-muted)] transition hover:bg-[var(--color-surface2)] hover:text-[var(--color-danger)]"
-                      >
-                        <Trash2 size={13} strokeWidth={2} />
-                      </button>
+                      <Tooltip>
+                        <TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => onEditPerson(student.id)} />}>
+                          <Settings />
+                          <span className="sr-only">Edit {student.name}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>Edit {student.name}</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => onDeletePerson(student.id)} />}>
+                          <Trash2 />
+                          <span className="sr-only">Delete {student.name}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>Delete {student.name}</TooltipContent>
+                      </Tooltip>
                     </span>
                   </div>
                 ))}
               </div>
 
               <div
-                className="relative min-h-full space-y-1.5 touch-none"
+                className="relative flex min-h-full touch-none flex-col gap-1.5"
                 onPointerDown={handleTrackPointerDown}
                 onPointerMove={handleTrackPointerMove}
               >
                 <div
                   className="pointer-events-none absolute bottom-0 top-0 z-30 w-0.5 rounded-full"
-                  style={{ left: scrubberLeft, backgroundColor: 'var(--color-scrub)' }}
+                  style={{ left: scrubberLeft, backgroundColor: 'var(--primary)' }}
                 />
 
                 {rows.map(({ student, daySlots }) => (
                   <div key={student.id} className="relative h-6">
-                    <div className="absolute left-0 right-0 top-1/2 h-px bg-[var(--color-border)]" />
+                    <div className="absolute left-0 right-0 top-1/2 h-px bg-border" />
                     {daySlots.map((slot) => {
                       const start = timeToMinutes(slot.startTime);
                       const end = timeToMinutes(slot.endTime);
@@ -294,55 +288,40 @@ function Timeline({
                       const isActive = start <= selectedMinutes && end > selectedMinutes;
 
                       return (
-                        <div
-                          key={`${slot.moduleCode}-${slot.lessonIndex}`}
-                          className="absolute top-1/2 h-2 -translate-y-1/2 rounded-full"
-                          onMouseEnter={(event) => {
-                            setHoveredLesson({ slot, x: event.clientX, y: event.clientY });
-                          }}
-                          onMouseMove={(event) => {
-                            setHoveredLesson({ slot, x: event.clientX, y: event.clientY });
-                          }}
-                          onMouseLeave={() => setHoveredLesson(null)}
-                          style={{
-                            left: `${left}%`,
-                            width: `${width}%`,
-                            background: student.color,
-                            opacity: isActive ? 1 : 0.6,
-                          }}
-                        />
+                        <Tooltip key={`${slot.moduleCode}-${slot.lessonIndex}`}>
+                          <TooltipTrigger
+                            render={
+                              <button
+                                type="button"
+                                className="absolute top-1/2 h-2 -translate-y-1/2 rounded-full outline-offset-2 transition-opacity focus-visible:outline-2 focus-visible:outline-primary"
+                                style={{
+                                  left: `${left}%`,
+                                  width: `${width}%`,
+                                  backgroundColor: student.color,
+                                  opacity: isActive ? 1 : 0.6,
+                                }}
+                              />
+                            }
+                          >
+                            <span className="sr-only">{slot.moduleCode} {slot.lessonType}</span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="font-semibold">{slot.moduleCode} {slot.lessonType}</p>
+                            <p className="opacity-80">
+                              {formatTime(slot.startTime)}-{formatTime(slot.endTime)} · {slot.venue || 'No venue'}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
                       );
                     })}
                   </div>
                 ))}
               </div>
 
-              <button
-                type="button"
-                onClick={onAddPerson}
-                className="col-span-2 mt-2 flex h-9 items-center justify-center rounded-md border border-dashed border-[var(--color-border2)] bg-[var(--color-surface2)] text-sm font-medium text-[var(--color-txt-dim)] transition hover:border-[var(--color-scrub)] hover:text-[var(--color-scrub)]"
-              >
-                + Add person
-              </button>
             </div>
           </div>
         </div>
       </div>
-
-      {hoveredLesson && (
-        <div
-          className="pointer-events-none fixed z-[3000] w-max max-w-[240px] rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-2 text-xs text-[var(--color-txt)] shadow-lg"
-          style={{
-            left: Math.min(window.innerWidth - 260, hoveredLesson.x + 12),
-            top: Math.max(8, hoveredLesson.y - 56),
-          }}
-        >
-          <div className="font-semibold">{hoveredLesson.slot.moduleCode} {hoveredLesson.slot.lessonType}</div>
-          <div className="text-[var(--color-txt-dim)]">
-            {formatTime(hoveredLesson.slot.startTime)}-{formatTime(hoveredLesson.slot.endTime)} - {hoveredLesson.slot.venue || 'No venue'}
-          </div>
-        </div>
-      )}
     </section>
   );
 }
@@ -477,18 +456,19 @@ export default function App() {
     : undefined;
 
   return (
-    <div className="h-screen overflow-hidden bg-[var(--color-bg)] text-[var(--color-txt)]">
+    <div className="h-dvh overflow-hidden bg-background text-foreground">
       <main className="flex h-full min-h-0 min-w-0 flex-col">
         <section className="relative min-h-[180px] flex-1 overflow-hidden">
           <MapView markers={mapMarkers} />
-          <button
+          <Button
             type="button"
+            size="lg"
             onClick={openAddModal}
-            className="absolute right-4 top-4 z-[1000] flex items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]/95 px-3 py-2 text-sm font-medium text-[var(--color-txt)] shadow-[0_8px_24px_rgba(0,0,0,0.24)] backdrop-blur transition hover:border-[var(--color-scrub)] hover:text-[var(--color-scrub)]"
+            className="absolute right-4 top-4 z-[1000] h-11 shadow-lg"
           >
-            <UserPlus size={16} strokeWidth={2} />
-            + Add person
-          </button>
+            <UserPlus data-icon="inline-start" />
+            Add person
+          </Button>
         </section>
 
         <Timeline
@@ -501,7 +481,6 @@ export default function App() {
           onSelectDay={setDay}
           onSelectTime={setTime}
           onJumpToNow={jumpToNow}
-          onAddPerson={openAddModal}
           onEditPerson={openEditModal}
           onDeletePerson={deleteStudent}
           onResizeStart={() => setResizingTimeline(true)}
