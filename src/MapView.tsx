@@ -68,7 +68,7 @@ function makePinIcon(L: typeof import('leaflet'), color: string, label: string) 
     <filter id="s"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.45)"/></filter>
     <path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 24 16 24S32 28 32 16C32 7.2 24.8 0 16 0z" fill="${color}" filter="url(#s)"/>
     <circle cx="16" cy="16" r="10" fill="rgba(0,0,0,0.22)"/>
-    <text x="16" y="20.5" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif" font-size="9" font-weight="700" fill="white">${initials}</text>
+    <text x="16" y="20.5" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="9" font-weight="700" fill="white">${initials}</text>
   </svg>`;
   return L.divIcon({ html: svg, className: '', iconSize: [32, 40], iconAnchor: [16, 40], popupAnchor: [0, -44] });
 }
@@ -103,8 +103,8 @@ function makeClusterIcon(L: typeof import('leaflet'), markers: MapMarker[], coun
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
     <filter id="cs"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="rgba(0,0,0,0.5)"/></filter>
     <g filter="url(#cs)">${arcs}</g>
-    <circle cx="${r}" cy="${r}" r="${inner}" fill="#22262d"/>
-    <text x="${r}" y="${r + 4}" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif" font-size="${count > 9 ? 11 : 13}" font-weight="700" fill="#edf0f4">${count}</text>
+    <circle cx="${r}" cy="${r}" r="${inner}" fill="oklch(0.1913 0 0)"/>
+    <text x="${r}" y="${r + 4}" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="${count > 9 ? 11 : 13}" font-weight="700" fill="oklch(0.9882 0.0041 157.18)">${count}</text>
   </svg>`;
   return L.divIcon({ html: svg, className: 'cluster-icon', iconSize: [size, size], iconAnchor: [r, r], popupAnchor: [0, -r - 4] });
 }
@@ -116,18 +116,18 @@ function singlePopupHtml(markers: MapMarker[]): string {
     const moduleCode = escapeHtml(m.moduleCode);
     const lessonType = escapeHtml(m.lessonType);
     return `
-    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;min-width:170px;">
+    <div style="font-family:var(--font-sans);min-width:170px;">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
         <span style="width:10px;height:10px;border-radius:50%;background:${m.color};display:inline-block;flex-shrink:0"></span>
-        <strong style="font-size:13px;color:#edf0f4">${label}</strong>
+        <strong style="font-size:13px;color:var(--foreground)">${label}</strong>
       </div>
-      <div style="font-size:12px;color:#b2bac5;line-height:1.7">
+      <div style="font-size:12px;color:var(--muted-foreground);line-height:1.7">
         <div>${venue}</div>
         <div>${moduleCode} - ${lessonType}</div>
         <div>${formatTime(m.startTime)}-${formatTime(m.endTime)}</div>
       </div>
     </div>`;
-  }).join('<hr style="margin:7px 0;border-color:#3a414b">');
+  }).join('<hr style="margin:7px 0;border-color:var(--border)">');
 }
 
 function clusterPopupHtml(markers: MapMarker[]): string {
@@ -135,16 +135,16 @@ function clusterPopupHtml(markers: MapMarker[]): string {
     (acc[m.venue] ??= []).push(m); return acc;
   }, {});
   return Object.entries(byVenue).map(([venue, ms]) => `
-    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;min-width:180px;margin-bottom:6px;">
-      <div style="font-size:11px;color:#9aa2ad;margin-bottom:4px;">${escapeHtml(venue)}</div>
+    <div style="font-family:var(--font-sans);min-width:180px;margin-bottom:6px;">
+      <div style="font-size:11px;color:var(--muted-foreground);margin-bottom:4px;">${escapeHtml(venue)}</div>
       ${ms.map(m => `
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
           <span style="width:8px;height:8px;border-radius:50%;background:${m.color};flex-shrink:0"></span>
-          <span style="font-size:12px;color:#edf0f4">${escapeHtml(m.label)}</span>
-          <span style="font-size:11px;color:#b2bac5;margin-left:auto">${escapeHtml(m.moduleCode)}</span>
+          <span style="font-size:12px;color:var(--foreground)">${escapeHtml(m.label)}</span>
+          <span style="font-size:11px;color:var(--muted-foreground);margin-left:auto">${escapeHtml(m.moduleCode)}</span>
         </div>`).join('')}
     </div>`
-  ).join('<hr style="margin:6px 0;border-color:#3a414b">');
+  ).join('<hr style="margin:6px 0;border-color:var(--border)">');
 }
 
 export default function MapView({ markers }: Props) {
@@ -191,6 +191,7 @@ export default function MapView({ markers }: Props) {
       const map = L.map(divRef.current, {
         center: NUS_CENTER,
         zoom: 15,
+        zoomControl: false,
         dragging: true,
         touchZoom: true,
         scrollWheelZoom: true,
