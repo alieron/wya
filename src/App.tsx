@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Clock3, Settings, Trash2, UserPlus } from 'lucide-react';
+import { Clock3, Settings, UserPlus } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -55,7 +55,6 @@ interface ScheduleDockProps {
   onSelectTime: (time: string) => void;
   onJumpToNow: () => void;
   onEditPerson: (id: string) => void;
-  onDeletePerson: (id: string) => void;
 }
 
 function todayAsDay(): Day {
@@ -108,13 +107,11 @@ function PersonLabel({
   active,
   mobile = false,
   onEdit,
-  onDelete,
 }: {
   student: Student;
   active: boolean;
   mobile?: boolean;
   onEdit: () => void;
-  onDelete: () => void;
 }) {
   return (
     <div className={cn(
@@ -147,15 +144,6 @@ function PersonLabel({
             <span className="sr-only">Edit {student.name}</span>
           </TooltipTrigger>
           <TooltipContent>Edit {student.name}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={<Button variant="ghost" size="icon-xs" onClick={onDelete} />}
-          >
-            <Trash2 />
-            <span className="sr-only">Delete {student.name}</span>
-          </TooltipTrigger>
-          <TooltipContent>Delete {student.name}</TooltipContent>
         </Tooltip>
       </span>
     </div>
@@ -237,14 +225,12 @@ function DesktopTimeline({
   selectedTime,
   onSelectTime,
   onEditPerson,
-  onDeletePerson,
 }: {
   rows: TimelineRow[];
   selectedMinutes: number;
   selectedTime: string;
   onSelectTime: (time: string) => void;
   onEditPerson: (id: string) => void;
-  onDeletePerson: (id: string) => void;
 }) {
   const scrubberLeft = `${timelinePercent(selectedMinutes)}%`;
 
@@ -305,7 +291,6 @@ function DesktopTimeline({
               student={student}
               active={active}
               onEdit={() => onEditPerson(student.id)}
-              onDelete={() => onDeletePerson(student.id)}
             />
             <div
               className="relative h-full touch-none"
@@ -339,14 +324,12 @@ function MobileTimeline({
   selectedTime,
   onSelectTime,
   onEditPerson,
-  onDeletePerson,
 }: {
   rows: TimelineRow[];
   selectedMinutes: number;
   selectedTime: string;
   onSelectTime: (time: string) => void;
   onEditPerson: (id: string) => void;
-  onDeletePerson: (id: string) => void;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const updatingFromScroll = useRef(false);
@@ -405,7 +388,6 @@ function MobileTimeline({
                   active={active}
                   mobile
                   onEdit={() => onEditPerson(student.id)}
-                  onDelete={() => onDeletePerson(student.id)}
                 />
               </div>
               <div className="mobile-timeline-zone absolute inset-y-0">
@@ -444,7 +426,6 @@ function ScheduleDock({
   onSelectTime,
   onJumpToNow,
   onEditPerson,
-  onDeletePerson,
 }: ScheduleDockProps) {
   const selectedMinutes = timeToMinutes(selectedTime);
   const rows: TimelineRow[] = schedules.map(({ student, slots }) => {
@@ -510,7 +491,6 @@ function ScheduleDock({
         selectedTime={selectedTime}
         onSelectTime={onSelectTime}
         onEditPerson={onEditPerson}
-        onDeletePerson={onDeletePerson}
       />
       <MobileTimeline
         rows={rows}
@@ -518,7 +498,6 @@ function ScheduleDock({
         selectedTime={selectedTime}
         onSelectTime={onSelectTime}
         onEditPerson={onEditPerson}
-        onDeletePerson={onDeletePerson}
       />
     </section>
   );
@@ -605,10 +584,7 @@ export default function App() {
   }
 
   function deleteStudent(id: string) {
-    const student = state.students.find((item) => item.id === id);
-    if (!student || !window.confirm(`Delete ${student.name}?`)) return;
     removeStudent(id, setState);
-    if (editingStudentId === id) closeModal();
   }
 
   const editingStudent = editingStudentId
@@ -641,7 +617,6 @@ export default function App() {
           onSelectTime={setTime}
           onJumpToNow={jumpToNow}
           onEditPerson={openEditModal}
-          onDeletePerson={deleteStudent}
         />
 
         {showModal && (
@@ -651,6 +626,7 @@ export default function App() {
             student={editingStudent}
             state={state}
             setState={setState}
+            onDelete={deleteStudent}
           />
         )}
       </div>
