@@ -20,7 +20,10 @@ interface Cluster {
   markers: MapMarker[];
 }
 
-interface Props { markers: MapMarker[] }
+interface Props {
+  markers: MapMarker[];
+  bottomInset?: number;
+}
 
 const NUS_CENTER: [number, number] = [1.2966, 103.7764];
 
@@ -109,21 +112,38 @@ function makeClusterIcon(L: typeof import('leaflet'), markers: MapMarker[], coun
   return L.divIcon({ html: svg, className: 'cluster-icon', iconSize: [size, size], iconAnchor: [r, r], popupAnchor: [0, -r - 4] });
 }
 
-function makeEdgeIcon(L: typeof import('leaflet'), marker: MapMarker, angle: number) {
-  const label = escapeHtml(marker.label);
-  const svg = `<div class="edge-marker" title="${label} is outside the visible map">
-    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" style="transform:rotate(${angle}deg)">
-      <path d="M18 2L31 30L18 24L5 30Z" fill="${marker.color}" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+function makeEdgeIcon(L: typeof import('leaflet'), markers: MapMarker[], angle: number) {
+  const colors = [...new Set(markers.map(marker => marker.color))];
+  const gradientId = `edge-${Math.abs(markers.reduce((sum, marker) => sum + Math.round((marker.lat + marker.lng) * 1e5), 0)).toString(36)}`;
+  const stops = colors.map((color, index) => {
+    const start = index / colors.length * 100;
+    const end = (index + 1) / colors.length * 100;
+    return `<stop offset="${start}%" stop-color="${color}"/><stop offset="${end}%" stop-color="${color}"/>`;
+  }).join('');
+  const labels = escapeHtml(markers.map(marker => marker.label).join(', '));
+  const count = markers.length > 1
+    ? `<circle cx="18" cy="23" r="7" fill="oklch(0.1913 0 0)" stroke="white" stroke-width="1.5"/>
+       <text x="18" y="26.5" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="10" font-weight="700" fill="white">${markers.length}</text>`
+    : '';
+  const svg = `<div class="edge-marker" title="${labels} outside the visible map">
+    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
+      <defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="1" y2="0">${stops}</linearGradient></defs>
+      <path d="M18 2L31 30L18 24L5 30Z" fill="url(#${gradientId})" stroke="white" stroke-width="2" stroke-linejoin="round" style="transform:rotate(${angle}deg);transform-origin:center"/>
+      ${count}
     </svg>
   </div>`;
   return L.divIcon({ html: svg, className: '', iconSize: [36, 36], iconAnchor: [18, 18] });
 }
 
-function edgePosition(map: LeafletMap, marker: MapMarker) {
+function edgePosition(map: LeafletMap, targetLat: number, targetLng: number, bottomInset: number) {
   const size = map.getSize();
+  const inset = window.matchMedia('(max-width: 639px)').matches
+    ? Math.min(bottomInset, size.y - 60)
+    : 0;
+  const visibleHeight = size.y - inset;
   const centerX = size.x / 2;
-  const centerY = size.y / 2;
-  const target = map.latLngToContainerPoint([marker.lat, marker.lng]);
+  const centerY = visibleHeight / 2;
+  const target = map.latLngToContainerPoint([targetLat, targetLng]);
   const dx = target.x - centerX;
   const dy = target.y - centerY;
   const padding = 30;
@@ -132,6 +152,7 @@ function edgePosition(map: LeafletMap, marker: MapMarker) {
     (centerY - padding) / Math.max(Math.abs(dy), 0.001),
   );
   return {
+    visible: target.x >= 0 && target.x <= size.x && target.y >= 0 && target.y <= visibleHeight,
     latLng: map.containerPointToLatLng([centerX + dx * scale, centerY + dy * scale]),
     angle: Math.atan2(dy, dx) * 180 / Math.PI + 90,
   };
@@ -175,12 +196,13 @@ function clusterPopupHtml(markers: MapMarker[]): string {
   ).join('<hr style="margin:6px 0;border-color:var(--border)">');
 }
 
-export default function MapView({ markers }: Props) {
+export default function MapView({ markers, bottomInset = 0 }: Props) {
   const divRef   = useRef<HTMLDivElement>(null);
   const mapRef   = useRef<LeafletMap | null>(null);
   const layerRef = useRef<LayerGroup | null>(null);
   const LRef     = useRef<typeof import('leaflet') | null>(null);
   const markersRef = useRef<MapMarker[]>(markers);
+  const bottomInsetRef = useRef(bottomInset);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
 
   const redraw = useCallback(() => {
@@ -206,14 +228,16 @@ export default function MapView({ markers }: Props) {
       L.marker([c.lat, c.lng], { icon }).bindPopup(popup).addTo(layer);
     }
 
-    const bounds = map.getBounds();
-    for (const marker of markersRef.current) {
-      if (bounds.contains([marker.lat, marker.lng])) continue;
-      const edge = edgePosition(map, marker);
+    for (const cluster of clusters) {
+      const edge = edgePosition(map, cluster.lat, cluster.lng, bottomInsetRef.current);
+      if (edge.visible) continue;
+      const popup = cluster.markers.length === 1
+        ? singlePopupHtml(cluster.markers)
+        : clusterPopupHtml(cluster.markers);
       L.marker(edge.latLng, {
-        icon: makeEdgeIcon(L, marker, edge.angle),
+        icon: makeEdgeIcon(L, cluster.markers, edge.angle),
         zIndexOffset: 1000,
-      }).bindPopup(singlePopupHtml([marker]), { autoPan: false }).addTo(layer);
+      }).bindPopup(popup, { autoPan: false }).addTo(layer);
     }
   }, []);
 
@@ -274,6 +298,11 @@ export default function MapView({ markers }: Props) {
     markersRef.current = markers;
     redraw();
   }, [markers, redraw]);
+
+  useEffect(() => {
+    bottomInsetRef.current = bottomInset;
+    redraw();
+  }, [bottomInset, redraw]);
 
   return <div ref={divRef} className="w-full h-full" />;
 }

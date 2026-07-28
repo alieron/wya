@@ -693,7 +693,7 @@ export default function App() {
   return (
       <div className="relative isolate h-dvh overflow-hidden bg-background text-foreground">
         <main className="absolute inset-0 z-0">
-          <MapView markers={mapMarkers} />
+          <MapView markers={mapMarkers} bottomInset={mobileDockHeight} />
         </main>
 
         <Button
