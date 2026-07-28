@@ -21,6 +21,14 @@
 .leaflet-control-attribution { background: color-mix(in oklch, var(--card) 82%, transparent) !important; color: var(--muted-foreground) !important; }
 .leaflet-control-attribution a { color: var(--primary) !important; }
 .cluster-icon { background: transparent; border: none; }
+.edge-marker {
+  filter: drop-shadow(0 3px 4px rgb(0 0 0 / 0.45));
+}
+
+.edge-marker svg {
+  display: block;
+  transform-origin: center;
+}
 
 .schedule-dock {
   position: absolute;

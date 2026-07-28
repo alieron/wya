@@ -109,6 +109,34 @@ function makeClusterIcon(L: typeof import('leaflet'), markers: MapMarker[], coun
   return L.divIcon({ html: svg, className: 'cluster-icon', iconSize: [size, size], iconAnchor: [r, r], popupAnchor: [0, -r - 4] });
 }
 
+function makeEdgeIcon(L: typeof import('leaflet'), marker: MapMarker, angle: number) {
+  const label = escapeHtml(marker.label);
+  const svg = `<div class="edge-marker" title="${label} is outside the visible map">
+    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" style="transform:rotate(${angle}deg)">
+      <path d="M18 2L31 30L18 24L5 30Z" fill="${marker.color}" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+    </svg>
+  </div>`;
+  return L.divIcon({ html: svg, className: '', iconSize: [36, 36], iconAnchor: [18, 18] });
+}
+
+function edgePosition(map: LeafletMap, marker: MapMarker) {
+  const size = map.getSize();
+  const centerX = size.x / 2;
+  const centerY = size.y / 2;
+  const target = map.latLngToContainerPoint([marker.lat, marker.lng]);
+  const dx = target.x - centerX;
+  const dy = target.y - centerY;
+  const padding = 30;
+  const scale = Math.min(
+    (centerX - padding) / Math.max(Math.abs(dx), 0.001),
+    (centerY - padding) / Math.max(Math.abs(dy), 0.001),
+  );
+  return {
+    latLng: map.containerPointToLatLng([centerX + dx * scale, centerY + dy * scale]),
+    angle: Math.atan2(dy, dx) * 180 / Math.PI + 90,
+  };
+}
+
 function singlePopupHtml(markers: MapMarker[]): string {
   return markers.map(m => {
     const label = escapeHtml(m.label);
@@ -177,6 +205,16 @@ export default function MapView({ markers }: Props) {
 
       L.marker([c.lat, c.lng], { icon }).bindPopup(popup).addTo(layer);
     }
+
+    const bounds = map.getBounds();
+    for (const marker of markersRef.current) {
+      if (bounds.contains([marker.lat, marker.lng])) continue;
+      const edge = edgePosition(map, marker);
+      L.marker(edge.latLng, {
+        icon: makeEdgeIcon(L, marker, edge.angle),
+        zIndexOffset: 1000,
+      }).bindPopup(singlePopupHtml([marker]), { autoPan: false }).addTo(layer);
+    }
   }, []);
 
   // Init map once
@@ -208,9 +246,10 @@ export default function MapView({ markers }: Props) {
       mapRef.current   = map;
 
       // Re-cluster on zoom
-      map.on('zoomend', redraw);
+      map.on('moveend zoomend', redraw);
       resizeObserverRef.current = new ResizeObserver(() => {
         map.invalidateSize({ pan: false });
+        requestAnimationFrame(redraw);
       });
       resizeObserverRef.current.observe(divRef.current);
 
