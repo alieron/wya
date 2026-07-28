@@ -406,7 +406,7 @@ function DesktopTimeline({
         >
           <TimeMarks />
           <div
-            className="pointer-events-none absolute inset-y-0 z-30 w-0.5 bg-primary"
+            className="pointer-events-none absolute inset-y-0 z-30 w-0.5 -translate-x-1/2 bg-primary"
             style={{ left: scrubberLeft }}
           />
           <div
@@ -422,7 +422,7 @@ function DesktopTimeline({
         </div>
       </div>
 
-      <div className="min-h-0 overflow-y-auto pr-1">
+      <div className="min-h-0 overflow-y-auto">
         {rows.map(({ student, daySlots, active }, index) => (
           <div
             key={student.id}
@@ -448,7 +448,7 @@ function DesktopTimeline({
             >
               <div className="absolute inset-x-0 top-1/2 h-px bg-border" />
               <div
-                className="pointer-events-none absolute inset-y-0 z-30 w-0.5 bg-primary"
+                className="pointer-events-none absolute inset-y-0 z-30 w-0.5 -translate-x-1/2 bg-primary"
                 style={{ left: scrubberLeft }}
               />
               {daySlots.map((slot) => (
