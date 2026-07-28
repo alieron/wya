@@ -64,13 +64,18 @@ function cluster(markers: MapMarker[], zoom: number): Cluster[] {
 
 function makePinIcon(L: typeof import('leaflet'), color: string, label: string) {
   const initials = escapeHtml(label.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase());
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">
-    <filter id="s"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.45)"/></filter>
-    <path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 24 16 24S32 28 32 16C32 7.2 24.8 0 16 0z" fill="${color}" filter="url(#s)"/>
-    <circle cx="16" cy="16" r="10" fill="rgba(0,0,0,0.22)"/>
-    <text x="16" y="20.5" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="9" font-weight="700" fill="white">${initials}</text>
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="40" viewBox="0 0 34 40">
+    <filter id="s"><feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="rgba(0,0,0,0.38)"/></filter>
+    <g filter="url(#s)">
+      <circle cx="17" cy="17" r="15" fill="#f7f5ef"/>
+      <circle cx="17" cy="17" r="12" fill="${color}"/>
+      <circle cx="17" cy="17" r="8.5" fill="rgba(22,23,25,0.28)"/>
+      <path d="M17 38l-5.5-8.5h11L17 38z" fill="#f7f5ef"/>
+      <circle cx="17" cy="29.5" r="4.2" fill="${color}"/>
+    </g>
+    <text x="17" y="20.5" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif" font-size="9" font-weight="800" fill="white">${initials}</text>
   </svg>`;
-  return L.divIcon({ html: svg, className: '', iconSize: [32, 40], iconAnchor: [16, 40], popupAnchor: [0, -44] });
+  return L.divIcon({ html: svg, className: '', iconSize: [34, 40], iconAnchor: [17, 38], popupAnchor: [0, -38] });
 }
 
 function makeClusterIcon(L: typeof import('leaflet'), markers: MapMarker[], count: number) {
@@ -197,8 +202,10 @@ export default function MapView({ markers }: Props) {
         scrollWheelZoom: true,
       });
       map.dragging.enable();
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors', maxZoom: 19,
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap contributors © CARTO',
+        maxZoom: 20,
+        subdomains: 'abcd',
       }).addTo(map);
 
       const layer = L.layerGroup().addTo(map);
