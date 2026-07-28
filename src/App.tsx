@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { GripHorizontal, GripVertical, MapPinOff, Settings, UserPlus } from 'lucide-react';
+import { GripVertical, MapPinOff, Settings, UserPlus } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,7 +30,7 @@ import { initialState, fetchModulesFor, loadVenues, moveStudent, removeStudent }
 import MapView from './MapView';
 import type { MapMarker } from './MapView';
 import AddStudentModal from './AddStudentModal';
-import TimelineControls, { TimeLabel } from './TimelineControls';
+import TimelineControls from './TimelineControls';
 
 const DAY_START = 8 * 60;
 const DAY_END = 22 * 60;
@@ -50,8 +50,6 @@ interface TimelineRow {
   daySlots: ResolvedSlot[];
   active: boolean;
 }
-
-type MobileDockSize = 'collapsed' | 'half' | 'expanded';
 
 interface ScheduleDockProps {
   schedules: Schedule[];
@@ -365,10 +363,10 @@ function DesktopTimeline({
             style={{ left: scrubberLeft }}
           />
           <div
-            className="pointer-events-none absolute top-4 z-40 flex h-4 w-[5.25rem] -translate-x-1/2 items-center justify-center rounded-full bg-primary text-[10px] font-semibold leading-4 text-primary-foreground shadow"
+            className="pointer-events-none absolute top-4 z-40 h-4 -translate-x-1/2 rounded-full bg-primary px-2 text-[10px] font-semibold leading-4 text-primary-foreground shadow"
             style={{ left: scrubberLeft }}
           >
-            <TimeLabel time={selectedTime} />
+            {formatTime(selectedTime)}
           </div>
         </div>
       </div>
@@ -509,8 +507,8 @@ function MobileTimeline({
 
       <div className="pointer-events-none absolute inset-y-0 left-1/2 z-30 w-0.5 -translate-x-1/2 bg-primary" />
       <div className="pointer-events-none absolute left-1/2 top-0 z-40 size-4 -translate-x-1/2 rounded-full border-2 border-card bg-primary shadow" />
-      <div className="pointer-events-none absolute left-1/2 top-5 z-40 flex h-4 w-[5.25rem] -translate-x-1/2 items-center justify-center rounded-full bg-primary text-[10px] font-semibold leading-4 text-primary-foreground shadow">
-        <TimeLabel time={selectedTime} />
+      <div className="pointer-events-none absolute left-1/2 top-5 z-40 h-4 -translate-x-1/2 rounded-full bg-primary px-2 text-[10px] font-semibold leading-4 text-primary-foreground shadow">
+        {formatTime(selectedTime)}
       </div>
     </div>
   );
@@ -529,8 +527,7 @@ function ScheduleDock({
   onMovePerson,
   venueLocations,
 }: ScheduleDockProps) {
-  const [mobileSize, setMobileSize] = useState<MobileDockSize>('half');
-  const dragStartY = useRef<number | null>(null);
+  const [mobileHeight, setMobileHeight] = useState('50dvh');
   const selectedMinutes = timeToMinutes(selectedTime);
   const rows: TimelineRow[] = schedules.map(({ student, slots }) => {
     const daySlots = slots.filter((slot) => slot.day === selectedDay);
@@ -544,38 +541,29 @@ function ScheduleDock({
     };
   });
 
-  function snapDock(delta: number) {
-    const sizes: MobileDockSize[] = ['collapsed', 'half', 'expanded'];
-    const current = sizes.indexOf(mobileSize);
-    if (Math.abs(delta) < 10) {
-      setMobileSize(mobileSize === 'expanded' ? 'collapsed' : sizes[current + 1]);
-      return;
-    }
-    const next = Math.min(sizes.length - 1, Math.max(0, current + (delta < 0 ? 1 : -1)));
-    setMobileSize(sizes[next]);
-  }
-
   return (
     <section
       className="schedule-dock z-10 flex flex-col overflow-hidden border bg-card/95 text-card-foreground shadow-2xl backdrop-blur-md"
-      data-mobile-size={mobileSize}
+      style={{ '--mobile-dock-height': mobileHeight } as React.CSSProperties}
       aria-label="Timetable schedule"
     >
       <button
         type="button"
-        className="flex h-8 shrink-0 touch-none items-center justify-center text-muted-foreground sm:hidden"
-        aria-label={`${mobileSize === 'expanded' ? 'Collapse' : 'Expand'} timeline panel`}
-        aria-expanded={mobileSize !== 'collapsed'}
+        className="flex h-8 shrink-0 cursor-row-resize touch-none items-center justify-center sm:hidden"
+        aria-label="Resize timeline panel"
         onPointerDown={(event) => {
-          dragStartY.current = event.clientY;
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
+        onPointerMove={(event) => {
+          if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+          const height = Math.min(window.innerHeight - 16, Math.max(152, window.innerHeight - event.clientY));
+          setMobileHeight(`${height}px`);
+        }}
         onPointerUp={(event) => {
-          if (dragStartY.current !== null) snapDock(event.clientY - dragStartY.current);
-          dragStartY.current = null;
+          event.currentTarget.releasePointerCapture(event.pointerId);
         }}
       >
-        <GripHorizontal />
+        <span className="h-1 w-10 rounded-full bg-border" />
       </button>
       <TimelineControls
         selectedDay={selectedDay}

@@ -74,11 +74,11 @@ export default function TimelineControls({
       </Button>
 
       <div className="order-1 flex min-w-0 items-center gap-2 sm:order-3 sm:ml-auto" aria-live="polite">
-        <span className="truncate text-sm font-bold text-foreground sm:text-base">
+        <span className="w-[5.25rem] shrink-0 text-sm font-bold text-foreground sm:text-base">
           <TimeLabel time={selectedTime} />
         </span>
-        <Badge variant="secondary">{busyCount} busy</Badge>
-        <Badge variant="outline" className="hidden min-[360px]:inline-flex">{freeCount} free</Badge>
+        <Badge variant="secondary" className="w-[4.5rem] tabular-nums">{busyCount} busy</Badge>
+        <Badge variant="outline" className="hidden w-[4.5rem] tabular-nums min-[360px]:inline-flex">{freeCount} free</Badge>
       </div>
     </header>
   );
