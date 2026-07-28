@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Clock3, GripHorizontal, GripVertical, Settings, UserPlus } from 'lucide-react';
+import { Clock3, GripHorizontal, GripVertical, MapPinOff, Settings, UserPlus } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   Tooltip,
@@ -58,6 +65,7 @@ interface ScheduleDockProps {
   onJumpToNow: () => void;
   onEditPerson: (id: string) => void;
   onMovePerson: (id: string, offset: number) => void;
+  venueLocations: AppState['venueLocations'];
 }
 
 function todayAsDay(): Day {
@@ -200,12 +208,15 @@ function LessonBlock({
   student,
   selectedMinutes,
   mobile = false,
+  venueFound,
 }: {
   slot: ResolvedSlot;
   student: Student;
   selectedMinutes: number;
   mobile?: boolean;
+  venueFound: boolean;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const start = timeToMinutes(slot.startTime);
   const end = timeToMinutes(slot.endTime);
   if (end <= DAY_START || start >= DAY_END) return null;
@@ -213,39 +224,72 @@ function LessonBlock({
   const left = timelinePercent(start);
   const width = Math.max(0.5, timelinePercent(end) - left);
   const active = start <= selectedMinutes && end > selectedMinutes;
+  const missingVenue = !slot.venue || !venueFound;
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            className={cn(
-              'absolute overflow-hidden rounded-md px-1.5 text-left text-[10px] font-bold text-white outline-offset-2 focus-visible:outline-2 focus-visible:outline-primary',
-              mobile ? 'top-1 h-10' : 'top-1/2 h-5 -translate-y-1/2',
-            )}
-            style={{
-              left: `${left}%`,
-              width: `${width}%`,
-              backgroundColor: student.color,
-              opacity: active ? 1 : 0.72,
-            }}
-            onPointerDown={(event) => event.stopPropagation()}
-          />
-        }
-      >
-        <span className="block truncate" aria-hidden="true">{slot.moduleCode}</span>
-        <span className="sr-only">{slot.moduleCode} {slot.lessonType}</span>
-      </TooltipTrigger>
-      <TooltipContent>
-        <div className="flex flex-col gap-0.5">
-          <p className="font-semibold">{slot.moduleCode} {slot.lessonType}</p>
-          <p className="opacity-80">
-            {formatTime(slot.startTime)}-{formatTime(slot.endTime)} · {slot.venue || 'No venue'}
-          </p>
-        </div>
-      </TooltipContent>
-    </Tooltip>
+    <>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              className={cn(
+                'absolute overflow-hidden rounded-md px-1.5 text-left text-[10px] font-bold text-white outline-offset-2 focus-visible:outline-2 focus-visible:outline-primary',
+                mobile ? 'top-1 h-10' : 'top-1/2 h-5 -translate-y-1/2',
+              )}
+              style={{
+                left: `${left}%`,
+                width: `${width}%`,
+                backgroundColor: student.color,
+                opacity: active ? 1 : 0.72,
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => mobile && setDetailsOpen(true)}
+            />
+          }
+        >
+          <span className="flex min-w-0 items-center gap-1" aria-hidden="true">
+            <span className="truncate">{slot.moduleCode}</span>
+            {missingVenue && <MapPinOff className="size-3 shrink-0" />}
+          </span>
+          <span className="sr-only">
+            {slot.moduleCode} {slot.lessonType}{missingVenue ? ', location unavailable' : ''}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <div className="flex flex-col gap-0.5">
+            <p className="font-semibold">{slot.moduleCode} {slot.lessonType}</p>
+            <p className="opacity-80">
+              {formatTime(slot.startTime)}-{formatTime(slot.endTime)} · {slot.venue || 'No venue'}
+            </p>
+            {missingVenue && <p className="opacity-80">Location unavailable on the map</p>}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+
+      {mobile && (
+        <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{slot.moduleCode} {slot.lessonType}</DialogTitle>
+              <DialogDescription>{student.name}&apos;s class details</DialogDescription>
+            </DialogHeader>
+            <dl className="grid grid-cols-[5rem_1fr] gap-x-3 gap-y-2 text-sm">
+              <dt className="text-muted-foreground">Time</dt>
+              <dd>{formatTime(slot.startTime)}-{formatTime(slot.endTime)}</dd>
+              <dt className="text-muted-foreground">Venue</dt>
+              <dd>{slot.venue || 'No venue provided'}</dd>
+              {missingVenue && (
+                <>
+                  <dt className="text-muted-foreground">Map</dt>
+                  <dd className="flex items-center gap-1.5"><MapPinOff className="size-4" /> Location unavailable</dd>
+                </>
+              )}
+            </dl>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 }
 
@@ -287,6 +331,7 @@ function DesktopTimeline({
   onSelectTime,
   onEditPerson,
   onMovePerson,
+  venueLocations,
 }: {
   rows: TimelineRow[];
   selectedMinutes: number;
@@ -294,6 +339,7 @@ function DesktopTimeline({
   onSelectTime: (time: string) => void;
   onEditPerson: (id: string) => void;
   onMovePerson: (id: string, offset: number) => void;
+  venueLocations: AppState['venueLocations'];
 }) {
   const scrubberLeft = `${timelinePercent(selectedMinutes)}%`;
 
@@ -372,6 +418,7 @@ function DesktopTimeline({
                   slot={slot}
                   student={student}
                   selectedMinutes={selectedMinutes}
+                  venueFound={Boolean(slot.venue && venueLocations[slot.venue])}
                 />
               ))}
             </div>
@@ -389,6 +436,7 @@ function MobileTimeline({
   onSelectTime,
   onEditPerson,
   onMovePerson,
+  venueLocations,
 }: {
   rows: TimelineRow[];
   selectedMinutes: number;
@@ -396,6 +444,7 @@ function MobileTimeline({
   onSelectTime: (time: string) => void;
   onEditPerson: (id: string) => void;
   onMovePerson: (id: string, offset: number) => void;
+  venueLocations: AppState['venueLocations'];
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const updatingFromScroll = useRef(false);
@@ -466,6 +515,7 @@ function MobileTimeline({
                     student={student}
                     selectedMinutes={selectedMinutes}
                     mobile
+                    venueFound={Boolean(slot.venue && venueLocations[slot.venue])}
                   />
                 ))}
               </div>
@@ -494,6 +544,7 @@ function ScheduleDock({
   onJumpToNow,
   onEditPerson,
   onMovePerson,
+  venueLocations,
 }: ScheduleDockProps) {
   const [mobileSize, setMobileSize] = useState<MobileDockSize>('half');
   const dragStartY = useRef<number | null>(null);
@@ -593,6 +644,7 @@ function ScheduleDock({
         onSelectTime={onSelectTime}
         onEditPerson={onEditPerson}
         onMovePerson={onMovePerson}
+        venueLocations={venueLocations}
       />
       <MobileTimeline
         rows={rows}
@@ -601,6 +653,7 @@ function ScheduleDock({
         onSelectTime={onSelectTime}
         onEditPerson={onEditPerson}
         onMovePerson={onMovePerson}
+        venueLocations={venueLocations}
       />
     </section>
   );
@@ -721,6 +774,7 @@ export default function App() {
           onJumpToNow={jumpToNow}
           onEditPerson={openEditModal}
           onMovePerson={(id, offset) => moveStudent(id, offset, setState)}
+          venueLocations={state.venueLocations}
         />
 
         {showModal && (
