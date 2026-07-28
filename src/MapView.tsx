@@ -197,8 +197,10 @@ export default function MapView({ markers }: Props) {
         scrollWheelZoom: true,
       });
       map.dragging.enable();
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors', maxZoom: 19,
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap contributors © CARTO',
+        maxZoom: 20,
+        subdomains: 'abcd',
       }).addTo(map);
 
       const layer = L.layerGroup().addTo(map);
