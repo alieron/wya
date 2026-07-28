@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Clock3, Settings, UserPlus } from 'lucide-react';
+import { Clock3, GripHorizontal, Settings, UserPlus } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -44,6 +44,8 @@ interface TimelineRow {
   daySlots: ResolvedSlot[];
   active: boolean;
 }
+
+type MobileDockSize = 'collapsed' | 'half' | 'expanded';
 
 interface ScheduleDockProps {
   schedules: Schedule[];
@@ -427,6 +429,8 @@ function ScheduleDock({
   onJumpToNow,
   onEditPerson,
 }: ScheduleDockProps) {
+  const [mobileSize, setMobileSize] = useState<MobileDockSize>('half');
+  const dragStartY = useRef<number | null>(null);
   const selectedMinutes = timeToMinutes(selectedTime);
   const rows: TimelineRow[] = schedules.map(({ student, slots }) => {
     const daySlots = slots.filter((slot) => slot.day === selectedDay);
@@ -440,8 +444,39 @@ function ScheduleDock({
     };
   });
 
+  function snapDock(delta: number) {
+    const sizes: MobileDockSize[] = ['collapsed', 'half', 'expanded'];
+    const current = sizes.indexOf(mobileSize);
+    if (Math.abs(delta) < 10) {
+      setMobileSize(mobileSize === 'expanded' ? 'collapsed' : sizes[current + 1]);
+      return;
+    }
+    const next = Math.min(sizes.length - 1, Math.max(0, current + (delta < 0 ? 1 : -1)));
+    setMobileSize(sizes[next]);
+  }
+
   return (
-    <section className="schedule-dock z-10 flex flex-col overflow-hidden border bg-card/95 text-card-foreground shadow-2xl backdrop-blur-md" aria-label="Timetable schedule">
+    <section
+      className="schedule-dock z-10 flex flex-col overflow-hidden border bg-card/95 text-card-foreground shadow-2xl backdrop-blur-md"
+      data-mobile-size={mobileSize}
+      aria-label="Timetable schedule"
+    >
+      <button
+        type="button"
+        className="flex h-8 shrink-0 touch-none items-center justify-center text-muted-foreground sm:hidden"
+        aria-label={`${mobileSize === 'expanded' ? 'Collapse' : 'Expand'} timeline panel`}
+        aria-expanded={mobileSize !== 'collapsed'}
+        onPointerDown={(event) => {
+          dragStartY.current = event.clientY;
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerUp={(event) => {
+          if (dragStartY.current !== null) snapDock(event.clientY - dragStartY.current);
+          dragStartY.current = null;
+        }}
+      >
+        <GripHorizontal />
+      </button>
       <header className="grid shrink-0 grid-cols-[1fr_auto] items-center gap-2 border-b px-3 py-3 sm:flex sm:px-4">
         <ToggleGroup
           aria-label="Day of week"
