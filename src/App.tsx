@@ -63,6 +63,8 @@ interface ScheduleDockProps {
   onEditPerson: (id: string) => void;
   onMovePerson: (id: string, offset: number) => void;
   venueLocations: AppState['venueLocations'];
+  mobileHeight: number;
+  onMobileHeightChange: (height: number) => void;
 }
 
 function todayAsDay(): Day {
@@ -526,8 +528,9 @@ function ScheduleDock({
   onEditPerson,
   onMovePerson,
   venueLocations,
+  mobileHeight,
+  onMobileHeightChange,
 }: ScheduleDockProps) {
-  const [mobileHeight, setMobileHeight] = useState('50dvh');
   const selectedMinutes = timeToMinutes(selectedTime);
   const rows: TimelineRow[] = schedules.map(({ student, slots }) => {
     const daySlots = slots.filter((slot) => slot.day === selectedDay);
@@ -544,26 +547,28 @@ function ScheduleDock({
   return (
     <section
       className="schedule-dock z-10 flex flex-col overflow-hidden border bg-card/95 text-card-foreground shadow-2xl backdrop-blur-md"
-      style={{ '--mobile-dock-height': mobileHeight } as React.CSSProperties}
+      style={{ '--mobile-dock-height': `${mobileHeight}px` } as React.CSSProperties}
       aria-label="Timetable schedule"
     >
       <button
         type="button"
-        className="flex h-8 shrink-0 cursor-row-resize touch-none items-center justify-center sm:hidden"
+        className="flex h-4 shrink-0 cursor-row-resize touch-none items-center justify-center sm:hidden"
         aria-label="Resize timeline panel"
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
         onPointerMove={(event) => {
           if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-          const height = Math.min(window.innerHeight - 16, Math.max(152, window.innerHeight - event.clientY));
-          setMobileHeight(`${height}px`);
+          const controlsHeight = event.currentTarget.nextElementSibling?.getBoundingClientRect().height ?? 120;
+          const minimumHeight = Math.ceil(event.currentTarget.offsetHeight + controlsHeight + 4);
+          const height = Math.min(window.innerHeight - 16, Math.max(minimumHeight, window.innerHeight - event.clientY));
+          onMobileHeightChange(height);
         }}
         onPointerUp={(event) => {
           event.currentTarget.releasePointerCapture(event.pointerId);
         }}
       >
-        <span className="h-1 w-10 rounded-full bg-border" />
+        <span className="h-0.5 w-8 rounded-full bg-border" />
       </button>
       <TimelineControls
         selectedDay={selectedDay}
@@ -602,6 +607,7 @@ export default function App() {
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [selectedDay, setDay] = useState<Day>(() => todayAsDay());
   const [selectedTime, setTime] = useState(() => currentTime());
+  const [mobileDockHeight, setMobileDockHeight] = useState(() => window.innerHeight * 0.5);
   const startedFetches = useRef(new Set<string>());
 
   useEffect(() => {
@@ -712,6 +718,8 @@ export default function App() {
           onEditPerson={openEditModal}
           onMovePerson={(id, offset) => moveStudent(id, offset, setState)}
           venueLocations={state.venueLocations}
+          mobileHeight={mobileDockHeight}
+          onMobileHeightChange={setMobileDockHeight}
         />
 
         {showModal && (
