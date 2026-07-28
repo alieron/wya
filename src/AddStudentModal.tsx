@@ -27,14 +27,16 @@ interface Props {
   student?: Student;
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
+  onDelete: (id: string) => void;
 }
 
-export default function AddStudentModal({ onClose, studentCount, student, state, setState }: Props) {
+export default function AddStudentModal({ onClose, studentCount, student, state, setState, onDelete }: Props) {
   const isEditing = Boolean(student);
   const [url, setUrl] = useState(() => student?.url ?? '');
   const [name, setName] = useState(() => student?.name ?? '');
   const [color, setColor] = useState(() => student?.color ?? defaultColor(studentCount));
   const [error, setError] = useState('');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const preview = useMemo(() => (url.trim() ? parseNusmodsUrl(url) : null), [url]);
   const previewMods = preview ? Object.keys(preview.modules) : [];
 
@@ -73,7 +75,32 @@ export default function AddStudentModal({ onClose, studentCount, student, state,
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
-        <form onSubmit={submit} className="flex flex-col gap-5">
+        {confirmingDelete && student ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Delete {student.name}?</DialogTitle>
+              <DialogDescription>
+                Their timetable will be removed from this browser. This cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setConfirmingDelete(false)}>
+                Keep person
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => {
+                  onDelete(student.id);
+                  onClose();
+                }}
+              >
+                Delete person
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <form onSubmit={submit} className="flex flex-col gap-5">
           <DialogHeader>
             <DialogTitle>{isEditing ? 'Edit person' : 'Add a timetable'}</DialogTitle>
             <DialogDescription>
@@ -150,12 +177,18 @@ export default function AddStudentModal({ onClose, studentCount, student, state,
           </FieldGroup>
 
           <DialogFooter>
+            {isEditing && (
+              <Button type="button" variant="destructive" className="sm:mr-auto" onClick={() => setConfirmingDelete(true)}>
+                Delete person
+              </Button>
+            )}
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
             <Button type="submit">
               {isEditing ? 'Save person' : 'Add person'}
             </Button>
           </DialogFooter>
-        </form>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );

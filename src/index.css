@@ -5,31 +5,7 @@
 @import "@fontsource/space-mono/400.css";
 @import "@fontsource/space-mono/700.css";
 
-@theme {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  --color-bg:              #121315;
-  --color-surface:         #242527;
-  --color-surface2:        #303235;
-  --color-border:          #3f4146;
-  --color-border2:         #565a61;
-  --color-txt:             #f2f0ea;
-  --color-txt-dim:         #c2c0ba;
-  --color-txt-muted:       #8f918f;
-  --color-accent:          #ff6b4a;
-  --color-accent-soft:     rgba(255, 107, 74, 0.11);
-  --color-accent-contrast: #ffffff;
-  --color-scrub:           #ff7a5d;
-  --color-accent2:         #2f80ed;
-  --color-warn:            #f6c85f;
-  --color-warn-soft:       rgba(246, 200, 95, 0.12);
-  --color-danger:          #ff7b72;
-  --color-grid:            rgba(237, 240, 244, 0.08);
-  --color-grid-strong:     rgba(237, 240, 244, 0.16);
-}
-
-* { box-sizing: border-box; }
-body { background: var(--color-bg); color: var(--color-txt); font-family: var(--font-sans); font-size: 14px; margin: 0; }
+@custom-variant dark (&:is(.dark *));
 
 .leaflet-container { background: var(--background) !important; }
 .leaflet-tile { filter: brightness(0.66) saturate(0.7) contrast(1.05); }
@@ -45,6 +21,14 @@ body { background: var(--color-bg); color: var(--color-txt); font-family: var(--
 .leaflet-control-attribution { background: color-mix(in oklch, var(--card) 82%, transparent) !important; color: var(--muted-foreground) !important; }
 .leaflet-control-attribution a { color: var(--primary) !important; }
 .cluster-icon { background: transparent; border: none; }
+.edge-marker {
+  filter: drop-shadow(0 3px 4px rgb(0 0 0 / 0.45));
+}
+
+.edge-marker svg {
+  display: block;
+  transform-origin: center;
+}
 
 .schedule-dock {
   position: absolute;
@@ -70,9 +54,9 @@ body { background: var(--color-bg); color: var(--color-txt); font-family: var(--
     bottom: 0;
     left: 0;
     width: 100%;
-    height: 50dvh;
-    min-height: 22.5rem;
-    max-height: 55dvh;
+    height: var(--mobile-dock-height, 50dvh);
+    min-height: 0;
+    max-height: calc(100dvh - 1rem);
     transform: none;
     border-right: 0;
     border-bottom: 0;

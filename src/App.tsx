@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Clock3, Settings, Trash2, UserPlus } from 'lucide-react';
+import { GripVertical, MapPinOff, Settings, UserPlus } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Tooltip,
   TooltipContent,
@@ -21,10 +26,11 @@ import {
 } from './nusmods';
 import type { Day, ResolvedSlot } from './nusmods';
 import type { AppState, Student } from './store';
-import { initialState, fetchModulesFor, loadVenues, removeStudent } from './store';
+import { initialState, fetchModulesFor, loadVenues, moveStudent, removeStudent } from './store';
 import MapView from './MapView';
 import type { MapMarker } from './MapView';
 import AddStudentModal from './AddStudentModal';
+import TimelineControls from './TimelineControls';
 
 const DAY_START = 8 * 60;
 const DAY_END = 22 * 60;
@@ -45,6 +51,11 @@ interface TimelineRow {
   active: boolean;
 }
 
+interface DragPreview {
+  student: Student;
+  offset: number;
+}
+
 interface ScheduleDockProps {
   schedules: Schedule[];
   selectedDay: Day;
@@ -55,7 +66,10 @@ interface ScheduleDockProps {
   onSelectTime: (time: string) => void;
   onJumpToNow: () => void;
   onEditPerson: (id: string) => void;
-  onDeletePerson: (id: string) => void;
+  onMovePerson: (id: string, offset: number) => void;
+  venueLocations: AppState['venueLocations'];
+  mobileHeight: number;
+  onMobileHeightChange: (height: number) => void;
 }
 
 function todayAsDay(): Day {
@@ -108,19 +122,73 @@ function PersonLabel({
   active,
   mobile = false,
   onEdit,
-  onDelete,
+  onMove,
+  dragging = false,
+  onDragPreview,
 }: {
   student: Student;
   active: boolean;
   mobile?: boolean;
   onEdit: () => void;
-  onDelete: () => void;
+  onMove: (offset: number) => void;
+  dragging?: boolean;
+  onDragPreview: (offset: number | null) => void;
 }) {
+  const dragStartY = useRef<number | null>(null);
+
   return (
     <div className={cn(
       'group flex min-w-0 items-center gap-2',
-      mobile && 'h-10 w-36 rounded-lg border bg-card/95 px-1.5 shadow-sm backdrop-blur-sm',
+      mobile && 'h-11 w-40 rounded-lg border bg-card/95 px-1.5 shadow-sm backdrop-blur-sm',
+      dragging && 'opacity-70 ring-2 ring-primary shadow-lg',
     )}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className={cn('shrink-0 touch-none', dragging ? 'cursor-grabbing bg-muted' : 'cursor-grab')}
+              aria-label={`Reorder ${student.name}`}
+              onPointerDown={(event) => {
+                dragStartY.current = event.clientY;
+                event.currentTarget.setPointerCapture(event.pointerId);
+                onDragPreview(0);
+              }}
+              onPointerMove={(event) => {
+                if (dragStartY.current === null || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                onDragPreview(Math.round((event.clientY - dragStartY.current) / (mobile ? 48 : 32)));
+              }}
+              onPointerUp={(event) => {
+                if (dragStartY.current !== null) {
+                  const offset = Math.round((event.clientY - dragStartY.current) / (mobile ? 48 : 32));
+                  if (offset) onMove(offset);
+                }
+                dragStartY.current = null;
+                onDragPreview(null);
+              }}
+              onPointerCancel={() => {
+                dragStartY.current = null;
+                onDragPreview(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  onMove(-1);
+                }
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault();
+                  onMove(1);
+                }
+              }}
+            />
+          }
+        >
+          <GripVertical />
+        </TooltipTrigger>
+        <TooltipContent>Drag to reorder</TooltipContent>
+      </Tooltip>
       <Avatar size="sm">
         <AvatarFallback
           className="text-[9px] font-semibold text-white"
@@ -148,18 +216,37 @@ function PersonLabel({
           </TooltipTrigger>
           <TooltipContent>Edit {student.name}</TooltipContent>
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={<Button variant="ghost" size="icon-xs" onClick={onDelete} />}
-          >
-            <Trash2 />
-            <span className="sr-only">Delete {student.name}</span>
-          </TooltipTrigger>
-          <TooltipContent>Delete {student.name}</TooltipContent>
-        </Tooltip>
       </span>
     </div>
   );
+}
+
+function PersonGhost({ student, mobile = false }: { student: Student; mobile?: boolean }) {
+  return (
+    <div className={cn(
+      'pointer-events-none flex items-center gap-2 rounded-lg border border-dashed border-primary bg-muted/95 px-2 text-xs font-semibold text-foreground shadow-lg',
+      mobile ? 'h-11 w-40' : 'h-7 w-full',
+    )}>
+      <GripVertical className="size-3.5 text-primary" />
+      <Avatar size="sm">
+        <AvatarFallback className="text-[9px] font-semibold text-white" style={{ backgroundColor: student.color }}>
+          {initials(student.name)}
+        </AvatarFallback>
+      </Avatar>
+      <span className="truncate">{student.name}</span>
+    </div>
+  );
+}
+
+function finalReorderPreview(rows: TimelineRow[], preview: DragPreview | null) {
+  if (!preview) return null;
+  const source = rows.findIndex(row => row.student.id === preview.student.id);
+  const target = Math.min(rows.length - 1, Math.max(0, source + preview.offset));
+  if (source < 0 || source === target) return null;
+  const students = rows.map(row => row.student);
+  const [student] = students.splice(source, 1);
+  students.splice(target, 0, student);
+  return { students, start: Math.min(source, target), end: Math.max(source, target) };
 }
 
 function LessonBlock({
@@ -167,12 +254,15 @@ function LessonBlock({
   student,
   selectedMinutes,
   mobile = false,
+  venueFound,
 }: {
   slot: ResolvedSlot;
   student: Student;
   selectedMinutes: number;
   mobile?: boolean;
+  venueFound: boolean;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const start = timeToMinutes(slot.startTime);
   const end = timeToMinutes(slot.endTime);
   if (end <= DAY_START || start >= DAY_END) return null;
@@ -180,39 +270,72 @@ function LessonBlock({
   const left = timelinePercent(start);
   const width = Math.max(0.5, timelinePercent(end) - left);
   const active = start <= selectedMinutes && end > selectedMinutes;
+  const missingVenue = !slot.venue || !venueFound;
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            className={cn(
-              'absolute overflow-hidden rounded-md px-1.5 text-left text-[10px] font-bold text-white outline-offset-2 focus-visible:outline-2 focus-visible:outline-primary',
-              mobile ? 'top-1 h-10' : 'top-1/2 h-5 -translate-y-1/2',
-            )}
-            style={{
-              left: `${left}%`,
-              width: `${width}%`,
-              backgroundColor: student.color,
-              opacity: active ? 1 : 0.72,
-            }}
-            onPointerDown={(event) => event.stopPropagation()}
-          />
-        }
-      >
-        <span className="block truncate" aria-hidden="true">{slot.moduleCode}</span>
-        <span className="sr-only">{slot.moduleCode} {slot.lessonType}</span>
-      </TooltipTrigger>
-      <TooltipContent>
-        <div className="flex flex-col gap-0.5">
-          <p className="font-semibold">{slot.moduleCode} {slot.lessonType}</p>
-          <p className="opacity-80">
-            {formatTime(slot.startTime)}-{formatTime(slot.endTime)} · {slot.venue || 'No venue'}
-          </p>
-        </div>
-      </TooltipContent>
-    </Tooltip>
+    <>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              className={cn(
+                'absolute overflow-hidden rounded-md px-1.5 text-left text-[10px] font-bold text-white outline-offset-2 focus-visible:outline-2 focus-visible:outline-primary',
+                mobile ? 'top-1 h-10' : 'top-1/2 h-5 -translate-y-1/2',
+              )}
+              style={{
+                left: `${left}%`,
+                width: `${width}%`,
+                backgroundColor: student.color,
+                opacity: active ? 1 : 0.72,
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => mobile && setDetailsOpen(true)}
+            />
+          }
+        >
+          <span className="flex min-w-0 items-center gap-1" aria-hidden="true">
+            <span className="truncate">{slot.moduleCode}</span>
+            {missingVenue && <MapPinOff className="size-3 shrink-0" />}
+          </span>
+          <span className="sr-only">
+            {slot.moduleCode} {slot.lessonType}{missingVenue ? ', location unavailable' : ''}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <div className="flex flex-col gap-0.5">
+            <p className="font-semibold">{slot.moduleCode} {slot.lessonType}</p>
+            <p className="opacity-80">
+              {formatTime(slot.startTime)}-{formatTime(slot.endTime)} · {slot.venue || 'No venue'}
+            </p>
+            {missingVenue && <p className="opacity-80">Location unavailable on the map</p>}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+
+      {mobile && (
+        <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{slot.moduleCode} {slot.lessonType}</DialogTitle>
+              <DialogDescription>{student.name}&apos;s class details</DialogDescription>
+            </DialogHeader>
+            <dl className="grid grid-cols-[5rem_1fr] gap-x-3 gap-y-2 text-sm">
+              <dt className="text-muted-foreground">Time</dt>
+              <dd>{formatTime(slot.startTime)}-{formatTime(slot.endTime)}</dd>
+              <dt className="text-muted-foreground">Venue</dt>
+              <dd>{slot.venue || 'No venue provided'}</dd>
+              {missingVenue && (
+                <>
+                  <dt className="text-muted-foreground">Map</dt>
+                  <dd className="flex items-center gap-1.5"><MapPinOff className="size-4" /> Location unavailable</dd>
+                </>
+              )}
+            </dl>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 }
 
@@ -224,7 +347,7 @@ function TimeMarks({ mobile = false }: { mobile?: boolean }) {
       style={{ left: `${timelinePercent(minutes)}%` }}
     >
       <div className={cn('w-px bg-border', mobile ? 'h-2.5' : 'h-2')} />
-      <div className="mt-1 -translate-x-1/2 font-mono text-[10px] text-muted-foreground">
+      <div className="mt-1 h-4 -translate-x-1/2 text-[10px] leading-4 text-muted-foreground">
         {formatMinutes(minutes)}
       </div>
     </div>
@@ -237,18 +360,23 @@ function DesktopTimeline({
   selectedTime,
   onSelectTime,
   onEditPerson,
-  onDeletePerson,
+  onMovePerson,
+  venueLocations,
 }: {
   rows: TimelineRow[];
   selectedMinutes: number;
   selectedTime: string;
   onSelectTime: (time: string) => void;
   onEditPerson: (id: string) => void;
-  onDeletePerson: (id: string) => void;
+  onMovePerson: (id: string, offset: number) => void;
+  venueLocations: AppState['venueLocations'];
 }) {
   const scrubberLeft = `${timelinePercent(selectedMinutes)}%`;
+  const [dragPreview, setDragPreview] = useState<DragPreview | null>(null);
+  const reorderPreview = finalReorderPreview(rows, dragPreview);
 
   function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     pickTimelineTime(event, onSelectTime);
   }
@@ -268,7 +396,7 @@ function DesktopTimeline({
   }
 
   return (
-    <div className="hidden min-h-0 flex-1 grid-rows-[36px_minmax(0,1fr)] px-4 pb-3 sm:grid">
+    <div className="hidden min-h-0 flex-1 select-none grid-rows-[36px_minmax(0,1fr)] px-4 pb-3 sm:grid">
       <div className="grid grid-cols-[148px_minmax(0,1fr)] gap-x-3">
         <div />
         <div
@@ -278,7 +406,7 @@ function DesktopTimeline({
         >
           <TimeMarks />
           <div
-            className="pointer-events-none absolute inset-y-0 z-30 w-0.5 bg-primary"
+            className="pointer-events-none absolute inset-y-0 z-30 w-0.5 -translate-x-1/2 bg-primary"
             style={{ left: scrubberLeft }}
           />
           <div
@@ -286,7 +414,7 @@ function DesktopTimeline({
             style={{ left: scrubberLeft }}
           />
           <div
-            className="pointer-events-none absolute top-4 z-40 -translate-x-1/2 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground shadow"
+            className="pointer-events-none absolute top-4 z-40 h-4 -translate-x-1/2 rounded-full bg-primary px-2 text-[10px] font-semibold leading-4 text-primary-foreground shadow"
             style={{ left: scrubberLeft }}
           >
             {formatTime(selectedTime)}
@@ -294,18 +422,25 @@ function DesktopTimeline({
         </div>
       </div>
 
-      <div className="min-h-0 overflow-y-auto pr-1">
-        {rows.map(({ student, daySlots, active }) => (
+      <div className="min-h-0 overflow-y-auto">
+        {rows.map(({ student, daySlots, active }, index) => (
           <div
             key={student.id}
             className="grid h-8 grid-cols-[148px_minmax(0,1fr)] items-center gap-x-3"
           >
-            <PersonLabel
-              student={student}
-              active={active}
-              onEdit={() => onEditPerson(student.id)}
-              onDelete={() => onDeletePerson(student.id)}
-            />
+            <div className="relative min-w-0">
+              {reorderPreview && index >= reorderPreview.start && index <= reorderPreview.end && (
+                <div className="absolute inset-0 z-40"><PersonGhost student={reorderPreview.students[index]} /></div>
+              )}
+              <PersonLabel
+                student={student}
+                active={active}
+                dragging={dragPreview?.student.id === student.id}
+                onEdit={() => onEditPerson(student.id)}
+                onMove={(offset) => onMovePerson(student.id, offset)}
+                onDragPreview={(offset) => setDragPreview(offset === null ? null : { student, offset })}
+              />
+            </div>
             <div
               className="relative h-full touch-none"
               onPointerDown={onPointerDown}
@@ -313,7 +448,7 @@ function DesktopTimeline({
             >
               <div className="absolute inset-x-0 top-1/2 h-px bg-border" />
               <div
-                className="pointer-events-none absolute inset-y-0 z-30 w-0.5 bg-primary"
+                className="pointer-events-none absolute inset-y-0 z-30 w-0.5 -translate-x-1/2 bg-primary"
                 style={{ left: scrubberLeft }}
               />
               {daySlots.map((slot) => (
@@ -322,6 +457,7 @@ function DesktopTimeline({
                   slot={slot}
                   student={student}
                   selectedMinutes={selectedMinutes}
+                  venueFound={Boolean(slot.venue && venueLocations[slot.venue])}
                 />
               ))}
             </div>
@@ -338,17 +474,21 @@ function MobileTimeline({
   selectedTime,
   onSelectTime,
   onEditPerson,
-  onDeletePerson,
+  onMovePerson,
+  venueLocations,
 }: {
   rows: TimelineRow[];
   selectedMinutes: number;
   selectedTime: string;
   onSelectTime: (time: string) => void;
   onEditPerson: (id: string) => void;
-  onDeletePerson: (id: string) => void;
+  onMovePerson: (id: string, offset: number) => void;
+  venueLocations: AppState['venueLocations'];
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const updatingFromScroll = useRef(false);
+  const [dragPreview, setDragPreview] = useState<DragPreview | null>(null);
+  const reorderPreview = finalReorderPreview(rows, dragPreview);
 
   useEffect(() => {
     if (updatingFromScroll.current) {
@@ -382,7 +522,7 @@ function MobileTimeline({
   }
 
   return (
-    <div className="relative min-h-0 flex-1 overflow-hidden sm:hidden">
+    <div className="relative min-h-0 flex-1 select-none overflow-hidden sm:hidden">
       <div
         ref={scrollerRef}
         className="mobile-timeline-scroll h-full max-w-full overflow-auto overscroll-contain"
@@ -396,15 +536,20 @@ function MobileTimeline({
               <TimeMarks mobile />
             </div>
           </div>
-          {rows.map(({ student, daySlots, active }) => (
+          {rows.map(({ student, daySlots, active }, index) => (
             <div key={student.id} className="relative h-12">
               <div className="sticky left-2 z-20 flex h-12 w-fit items-center">
+                {reorderPreview && index >= reorderPreview.start && index <= reorderPreview.end && (
+                  <div className="absolute inset-0 z-40"><PersonGhost student={reorderPreview.students[index]} mobile /></div>
+                )}
                 <PersonLabel
                   student={student}
                   active={active}
                   mobile
+                  dragging={dragPreview?.student.id === student.id}
                   onEdit={() => onEditPerson(student.id)}
-                  onDelete={() => onDeletePerson(student.id)}
+                  onMove={(offset) => onMovePerson(student.id, offset)}
+                  onDragPreview={(offset) => setDragPreview(offset === null ? null : { student, offset })}
                 />
               </div>
               <div className="mobile-timeline-zone absolute inset-y-0">
@@ -416,6 +561,7 @@ function MobileTimeline({
                     student={student}
                     selectedMinutes={selectedMinutes}
                     mobile
+                    venueFound={Boolean(slot.venue && venueLocations[slot.venue])}
                   />
                 ))}
               </div>
@@ -426,7 +572,7 @@ function MobileTimeline({
 
       <div className="pointer-events-none absolute inset-y-0 left-1/2 z-30 w-0.5 -translate-x-1/2 bg-primary" />
       <div className="pointer-events-none absolute left-1/2 top-0 z-40 size-4 -translate-x-1/2 rounded-full border-2 border-card bg-primary shadow" />
-      <div className="pointer-events-none absolute left-1/2 top-5 z-40 -translate-x-1/2 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground shadow">
+      <div className="pointer-events-none absolute left-1/2 top-5 z-40 h-4 -translate-x-1/2 rounded-full bg-primary px-2 text-[10px] font-semibold leading-4 text-primary-foreground shadow">
         {formatTime(selectedTime)}
       </div>
     </div>
@@ -443,7 +589,10 @@ function ScheduleDock({
   onSelectTime,
   onJumpToNow,
   onEditPerson,
-  onDeletePerson,
+  onMovePerson,
+  venueLocations,
+  mobileHeight,
+  onMobileHeightChange,
 }: ScheduleDockProps) {
   const selectedMinutes = timeToMinutes(selectedTime);
   const rows: TimelineRow[] = schedules.map(({ student, slots }) => {
@@ -459,49 +608,39 @@ function ScheduleDock({
   });
 
   return (
-    <section className="schedule-dock z-10 flex flex-col overflow-hidden border bg-card/95 text-card-foreground shadow-2xl backdrop-blur-md" aria-label="Timetable schedule">
-      <header className="grid shrink-0 grid-cols-[1fr_auto] items-center gap-2 border-b px-3 py-3 sm:flex sm:px-4">
-        <ToggleGroup
-          aria-label="Day of week"
-          value={[selectedDay]}
-          onValueChange={(days) => days[0] && onSelectDay(days[0] as Day)}
-          variant="outline"
-          size="sm"
-          spacing={0}
-          className="order-3 col-span-2 grid h-11 w-full grid-cols-6 sm:order-1 sm:flex sm:h-auto sm:w-auto"
-        >
-          {DAYS.map((day) => (
-            <ToggleGroupItem
-              key={day}
-              value={day}
-              aria-label={day}
-              className="h-11 min-w-0 px-1 data-pressed:bg-primary data-pressed:text-primary-foreground sm:h-7 sm:min-w-10 sm:px-2"
-            >
-              <span className="sm:hidden">{day.slice(0, 2)}</span>
-              <span className="hidden sm:inline">{day.slice(0, 3)}</span>
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={onJumpToNow}
-          className="order-2 h-11 sm:order-2 sm:h-7"
-        >
-          <Clock3 data-icon="inline-start" />
-          Now
-        </Button>
-
-        <div className="order-1 flex min-w-0 items-center gap-2 sm:order-3 sm:ml-auto" aria-live="polite">
-          <span className="truncate font-mono text-sm font-bold text-foreground sm:text-base">
-            {formatTime(selectedTime)}
-          </span>
-          <Badge variant="secondary">{busyCount} busy</Badge>
-          <Badge variant="outline" className="hidden min-[360px]:inline-flex">{freeCount} free</Badge>
-        </div>
-      </header>
+    <section
+      className="schedule-dock z-10 flex flex-col overflow-hidden border bg-card/95 text-card-foreground shadow-2xl backdrop-blur-md"
+      style={{ '--mobile-dock-height': `${mobileHeight}px` } as React.CSSProperties}
+      aria-label="Timetable schedule"
+    >
+      <button
+        type="button"
+        className="flex h-4 shrink-0 cursor-row-resize touch-none items-center justify-center sm:hidden"
+        aria-label="Resize timeline panel"
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+          const controlsHeight = event.currentTarget.nextElementSibling?.getBoundingClientRect().height ?? 120;
+          const minimumHeight = Math.ceil(event.currentTarget.offsetHeight + controlsHeight + 4);
+          const height = Math.min(window.innerHeight - 16, Math.max(minimumHeight, window.innerHeight - event.clientY));
+          onMobileHeightChange(height);
+        }}
+        onPointerUp={(event) => {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+      >
+        <span className="h-0.5 w-8 rounded-full bg-border" />
+      </button>
+      <TimelineControls
+        selectedDay={selectedDay}
+        selectedTime={selectedTime}
+        busyCount={busyCount}
+        freeCount={freeCount}
+        onSelectDay={onSelectDay}
+        onJumpToNow={onJumpToNow}
+      />
 
       <DesktopTimeline
         rows={rows}
@@ -509,7 +648,8 @@ function ScheduleDock({
         selectedTime={selectedTime}
         onSelectTime={onSelectTime}
         onEditPerson={onEditPerson}
-        onDeletePerson={onDeletePerson}
+        onMovePerson={onMovePerson}
+        venueLocations={venueLocations}
       />
       <MobileTimeline
         rows={rows}
@@ -517,7 +657,8 @@ function ScheduleDock({
         selectedTime={selectedTime}
         onSelectTime={onSelectTime}
         onEditPerson={onEditPerson}
-        onDeletePerson={onDeletePerson}
+        onMovePerson={onMovePerson}
+        venueLocations={venueLocations}
       />
     </section>
   );
@@ -529,6 +670,7 @@ export default function App() {
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [selectedDay, setDay] = useState<Day>(() => todayAsDay());
   const [selectedTime, setTime] = useState(() => currentTime());
+  const [mobileDockHeight, setMobileDockHeight] = useState(() => window.innerHeight * 0.5);
   const startedFetches = useRef(new Set<string>());
 
   useEffect(() => {
@@ -604,10 +746,7 @@ export default function App() {
   }
 
   function deleteStudent(id: string) {
-    const student = state.students.find((item) => item.id === id);
-    if (!student || !window.confirm(`Delete ${student.name}?`)) return;
     removeStudent(id, setState);
-    if (editingStudentId === id) closeModal();
   }
 
   const editingStudent = editingStudentId
@@ -617,7 +756,7 @@ export default function App() {
   return (
       <div className="relative isolate h-dvh overflow-hidden bg-background text-foreground">
         <main className="absolute inset-0 z-0">
-          <MapView markers={mapMarkers} />
+          <MapView markers={mapMarkers} bottomInset={mobileDockHeight} />
         </main>
 
         <Button
@@ -640,7 +779,10 @@ export default function App() {
           onSelectTime={setTime}
           onJumpToNow={jumpToNow}
           onEditPerson={openEditModal}
-          onDeletePerson={deleteStudent}
+          onMovePerson={(id, offset) => moveStudent(id, offset, setState)}
+          venueLocations={state.venueLocations}
+          mobileHeight={mobileDockHeight}
+          onMobileHeightChange={setMobileDockHeight}
         />
 
         {showModal && (
@@ -650,6 +792,7 @@ export default function App() {
             student={editingStudent}
             state={state}
             setState={setState}
+            onDelete={deleteStudent}
           />
         )}
       </div>
