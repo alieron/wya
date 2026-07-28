@@ -51,6 +51,11 @@ interface TimelineRow {
   active: boolean;
 }
 
+interface DragPreview {
+  student: Student;
+  offset: number;
+}
+
 interface ScheduleDockProps {
   schedules: Schedule[];
   selectedDay: Day;
@@ -118,12 +123,16 @@ function PersonLabel({
   mobile = false,
   onEdit,
   onMove,
+  dragging = false,
+  onDragPreview,
 }: {
   student: Student;
   active: boolean;
   mobile?: boolean;
   onEdit: () => void;
   onMove: (offset: number) => void;
+  dragging?: boolean;
+  onDragPreview: (offset: number | null) => void;
 }) {
   const dragStartY = useRef<number | null>(null);
 
@@ -131,6 +140,7 @@ function PersonLabel({
     <div className={cn(
       'group flex min-w-0 items-center gap-2',
       mobile && 'h-11 w-40 rounded-lg border bg-card/95 px-1.5 shadow-sm backdrop-blur-sm',
+      dragging && 'opacity-70 ring-2 ring-primary shadow-lg',
     )}>
       <Tooltip>
         <TooltipTrigger
@@ -139,11 +149,16 @@ function PersonLabel({
               type="button"
               variant="ghost"
               size="icon-xs"
-              className="shrink-0 touch-none cursor-grab"
+              className={cn('shrink-0 touch-none', dragging ? 'cursor-grabbing bg-muted' : 'cursor-grab')}
               aria-label={`Reorder ${student.name}`}
               onPointerDown={(event) => {
                 dragStartY.current = event.clientY;
                 event.currentTarget.setPointerCapture(event.pointerId);
+                onDragPreview(0);
+              }}
+              onPointerMove={(event) => {
+                if (dragStartY.current === null || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                onDragPreview(Math.round((event.clientY - dragStartY.current) / (mobile ? 48 : 32)));
               }}
               onPointerUp={(event) => {
                 if (dragStartY.current !== null) {
@@ -151,8 +166,12 @@ function PersonLabel({
                   if (offset) onMove(offset);
                 }
                 dragStartY.current = null;
+                onDragPreview(null);
               }}
-              onPointerCancel={() => { dragStartY.current = null; }}
+              onPointerCancel={() => {
+                dragStartY.current = null;
+                onDragPreview(null);
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'ArrowUp') {
                   event.preventDefault();
@@ -200,6 +219,34 @@ function PersonLabel({
       </span>
     </div>
   );
+}
+
+function PersonGhost({ student, mobile = false }: { student: Student; mobile?: boolean }) {
+  return (
+    <div className={cn(
+      'pointer-events-none flex items-center gap-2 rounded-lg border border-dashed border-primary bg-muted/95 px-2 text-xs font-semibold text-foreground shadow-lg',
+      mobile ? 'h-11 w-40' : 'h-7 w-full',
+    )}>
+      <GripVertical className="size-3.5 text-primary" />
+      <Avatar size="sm">
+        <AvatarFallback className="text-[9px] font-semibold text-white" style={{ backgroundColor: student.color }}>
+          {initials(student.name)}
+        </AvatarFallback>
+      </Avatar>
+      <span className="truncate">{student.name}</span>
+    </div>
+  );
+}
+
+function finalReorderPreview(rows: TimelineRow[], preview: DragPreview | null) {
+  if (!preview) return null;
+  const source = rows.findIndex(row => row.student.id === preview.student.id);
+  const target = Math.min(rows.length - 1, Math.max(0, source + preview.offset));
+  if (source < 0 || source === target) return null;
+  const students = rows.map(row => row.student);
+  const [student] = students.splice(source, 1);
+  students.splice(target, 0, student);
+  return { students, start: Math.min(source, target), end: Math.max(source, target) };
 }
 
 function LessonBlock({
@@ -325,6 +372,8 @@ function DesktopTimeline({
   venueLocations: AppState['venueLocations'];
 }) {
   const scrubberLeft = `${timelinePercent(selectedMinutes)}%`;
+  const [dragPreview, setDragPreview] = useState<DragPreview | null>(null);
+  const reorderPreview = finalReorderPreview(rows, dragPreview);
 
   function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     event.preventDefault();
@@ -374,17 +423,24 @@ function DesktopTimeline({
       </div>
 
       <div className="min-h-0 overflow-y-auto pr-1">
-        {rows.map(({ student, daySlots, active }) => (
+        {rows.map(({ student, daySlots, active }, index) => (
           <div
             key={student.id}
             className="grid h-8 grid-cols-[148px_minmax(0,1fr)] items-center gap-x-3"
           >
-            <PersonLabel
-              student={student}
-              active={active}
-              onEdit={() => onEditPerson(student.id)}
-              onMove={(offset) => onMovePerson(student.id, offset)}
-            />
+            <div className="relative min-w-0">
+              {reorderPreview && index >= reorderPreview.start && index <= reorderPreview.end && (
+                <div className="absolute inset-0 z-40"><PersonGhost student={reorderPreview.students[index]} /></div>
+              )}
+              <PersonLabel
+                student={student}
+                active={active}
+                dragging={dragPreview?.student.id === student.id}
+                onEdit={() => onEditPerson(student.id)}
+                onMove={(offset) => onMovePerson(student.id, offset)}
+                onDragPreview={(offset) => setDragPreview(offset === null ? null : { student, offset })}
+              />
+            </div>
             <div
               className="relative h-full touch-none"
               onPointerDown={onPointerDown}
@@ -431,6 +487,8 @@ function MobileTimeline({
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const updatingFromScroll = useRef(false);
+  const [dragPreview, setDragPreview] = useState<DragPreview | null>(null);
+  const reorderPreview = finalReorderPreview(rows, dragPreview);
 
   useEffect(() => {
     if (updatingFromScroll.current) {
@@ -478,15 +536,20 @@ function MobileTimeline({
               <TimeMarks mobile />
             </div>
           </div>
-          {rows.map(({ student, daySlots, active }) => (
+          {rows.map(({ student, daySlots, active }, index) => (
             <div key={student.id} className="relative h-12">
               <div className="sticky left-2 z-20 flex h-12 w-fit items-center">
+                {reorderPreview && index >= reorderPreview.start && index <= reorderPreview.end && (
+                  <div className="absolute inset-0 z-40"><PersonGhost student={reorderPreview.students[index]} mobile /></div>
+                )}
                 <PersonLabel
                   student={student}
                   active={active}
                   mobile
+                  dragging={dragPreview?.student.id === student.id}
                   onEdit={() => onEditPerson(student.id)}
                   onMove={(offset) => onMovePerson(student.id, offset)}
+                  onDragPreview={(offset) => setDragPreview(offset === null ? null : { student, offset })}
                 />
               </div>
               <div className="mobile-timeline-zone absolute inset-y-0">

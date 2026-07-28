@@ -123,13 +123,15 @@ function makeEdgeIcon(L: typeof import('leaflet'), markers: MapMarker[], angle: 
   const labels = escapeHtml(markers.map(marker => marker.label).join(', '));
   const count = markers.length > 1
     ? `<circle cx="18" cy="23" r="7" fill="oklch(0.1913 0 0)" stroke="white" stroke-width="1.5"/>
-       <text x="18" y="26.5" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="10" font-weight="700" fill="white">${markers.length}</text>`
+       <text x="18" y="23" text-anchor="middle" dominant-baseline="central" font-family="Inter,Arial,sans-serif" font-size="10" font-weight="700" fill="white" transform="rotate(${-angle} 18 23)">${markers.length}</text>`
     : '';
   const svg = `<div class="edge-marker" title="${labels} outside the visible map">
     <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
       <defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="1" y2="0">${stops}</linearGradient></defs>
-      <path d="M18 2L31 30L18 24L5 30Z" fill="url(#${gradientId})" stroke="white" stroke-width="2" stroke-linejoin="round" style="transform:rotate(${angle}deg);transform-origin:center"/>
-      ${count}
+      <g transform="rotate(${angle} 18 18)">
+        <path d="M18 2L31 30L18 24L5 30Z" fill="url(#${gradientId})" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+        ${count}
+      </g>
     </svg>
   </div>`;
   return L.divIcon({ html: svg, className: '', iconSize: [36, 36], iconAnchor: [18, 18] });
@@ -137,9 +139,9 @@ function makeEdgeIcon(L: typeof import('leaflet'), markers: MapMarker[], angle: 
 
 function edgePosition(map: LeafletMap, targetLat: number, targetLng: number, bottomInset: number) {
   const size = map.getSize();
-  const inset = window.matchMedia('(max-width: 639px)').matches
-    ? Math.min(bottomInset, size.y - 60)
-    : 0;
+  const mapBottom = map.getContainer().getBoundingClientRect().bottom;
+  const dockTop = document.querySelector<HTMLElement>('.schedule-dock')?.getBoundingClientRect().top;
+  const inset = Math.min(dockTop === undefined ? bottomInset : Math.max(0, mapBottom - dockTop), size.y - 60);
   const visibleHeight = size.y - inset;
   const centerX = size.x / 2;
   const centerY = visibleHeight / 2;
@@ -269,8 +271,7 @@ export default function MapView({ markers, bottomInset = 0 }: Props) {
       layerRef.current = layer;
       mapRef.current   = map;
 
-      // Re-cluster on zoom
-      map.on('moveend zoomend', redraw);
+      map.on('move zoomend', redraw);
       resizeObserverRef.current = new ResizeObserver(() => {
         map.invalidateSize({ pan: false });
         requestAnimationFrame(redraw);
