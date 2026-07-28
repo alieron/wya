@@ -87,14 +87,14 @@ export async function fetchModulesFor(
   }
 }
 
-export async function addStudent(
+export function addStudent(
   url: string,
   name: string,
   color: string | undefined,
   state: AppState,
   setState: SetState,
-): Promise<void> {
-  const id = crypto.randomUUID();
+): void {
+  const id = crypto.randomUUID?.() ?? [...crypto.getRandomValues(new Uint32Array(4))].join('-');
   const student: Student = {
     id,
     name: name.trim() || `Person ${state.students.length + 1}`,
@@ -105,8 +105,6 @@ export async function addStudent(
   const newList = [...state.students, student];
   persistStudents(newList);
   setState(s => ({ ...s, students: newList }));
-  if (!state.venueLoaded) loadVenues(setState);
-  await fetchModulesFor(student, state.moduleCache, setState);
 }
 
 export function updateStudent(id: string, patch: StudentPatch, setState: SetState): void {
