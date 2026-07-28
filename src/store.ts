@@ -115,6 +115,19 @@ export function updateStudent(id: string, patch: StudentPatch, setState: SetStat
   });
 }
 
+export function moveStudent(id: string, offset: number, setState: SetState): void {
+  setState(s => {
+    const from = s.students.findIndex(student => student.id === id);
+    const to = Math.min(s.students.length - 1, Math.max(0, from + offset));
+    if (from < 0 || from === to) return s;
+    const students = [...s.students];
+    const [student] = students.splice(from, 1);
+    students.splice(to, 0, student);
+    persistStudents(students);
+    return { ...s, students };
+  });
+}
+
 export function removeStudent(id: string, setState: SetState): void {
   setState(s => {
     const newList = s.students.filter(st => st.id !== id);

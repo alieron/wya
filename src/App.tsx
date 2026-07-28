@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Clock3, GripHorizontal, Settings, UserPlus } from 'lucide-react';
+import { Clock3, GripHorizontal, GripVertical, Settings, UserPlus } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,7 @@ import {
 } from './nusmods';
 import type { Day, ResolvedSlot } from './nusmods';
 import type { AppState, Student } from './store';
-import { initialState, fetchModulesFor, loadVenues, removeStudent } from './store';
+import { initialState, fetchModulesFor, loadVenues, moveStudent, removeStudent } from './store';
 import MapView from './MapView';
 import type { MapMarker } from './MapView';
 import AddStudentModal from './AddStudentModal';
@@ -57,6 +57,7 @@ interface ScheduleDockProps {
   onSelectTime: (time: string) => void;
   onJumpToNow: () => void;
   onEditPerson: (id: string) => void;
+  onMovePerson: (id: string, offset: number) => void;
 }
 
 function todayAsDay(): Day {
@@ -109,17 +110,59 @@ function PersonLabel({
   active,
   mobile = false,
   onEdit,
+  onMove,
 }: {
   student: Student;
   active: boolean;
   mobile?: boolean;
   onEdit: () => void;
+  onMove: (offset: number) => void;
 }) {
+  const dragStartY = useRef<number | null>(null);
+
   return (
     <div className={cn(
       'group flex min-w-0 items-center gap-2',
-      mobile && 'h-10 w-36 rounded-lg border bg-card/95 px-1.5 shadow-sm backdrop-blur-sm',
+      mobile && 'h-11 w-40 rounded-lg border bg-card/95 px-1.5 shadow-sm backdrop-blur-sm',
     )}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="shrink-0 touch-none cursor-grab"
+              aria-label={`Reorder ${student.name}`}
+              onPointerDown={(event) => {
+                dragStartY.current = event.clientY;
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerUp={(event) => {
+                if (dragStartY.current !== null) {
+                  const offset = Math.round((event.clientY - dragStartY.current) / (mobile ? 48 : 32));
+                  if (offset) onMove(offset);
+                }
+                dragStartY.current = null;
+              }}
+              onPointerCancel={() => { dragStartY.current = null; }}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  onMove(-1);
+                }
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault();
+                  onMove(1);
+                }
+              }}
+            />
+          }
+        >
+          <GripVertical />
+        </TooltipTrigger>
+        <TooltipContent>Drag to reorder</TooltipContent>
+      </Tooltip>
       <Avatar size="sm">
         <AvatarFallback
           className="text-[9px] font-semibold text-white"
@@ -227,12 +270,14 @@ function DesktopTimeline({
   selectedTime,
   onSelectTime,
   onEditPerson,
+  onMovePerson,
 }: {
   rows: TimelineRow[];
   selectedMinutes: number;
   selectedTime: string;
   onSelectTime: (time: string) => void;
   onEditPerson: (id: string) => void;
+  onMovePerson: (id: string, offset: number) => void;
 }) {
   const scrubberLeft = `${timelinePercent(selectedMinutes)}%`;
 
@@ -293,6 +338,7 @@ function DesktopTimeline({
               student={student}
               active={active}
               onEdit={() => onEditPerson(student.id)}
+              onMove={(offset) => onMovePerson(student.id, offset)}
             />
             <div
               className="relative h-full touch-none"
@@ -326,12 +372,14 @@ function MobileTimeline({
   selectedTime,
   onSelectTime,
   onEditPerson,
+  onMovePerson,
 }: {
   rows: TimelineRow[];
   selectedMinutes: number;
   selectedTime: string;
   onSelectTime: (time: string) => void;
   onEditPerson: (id: string) => void;
+  onMovePerson: (id: string, offset: number) => void;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const updatingFromScroll = useRef(false);
@@ -390,6 +438,7 @@ function MobileTimeline({
                   active={active}
                   mobile
                   onEdit={() => onEditPerson(student.id)}
+                  onMove={(offset) => onMovePerson(student.id, offset)}
                 />
               </div>
               <div className="mobile-timeline-zone absolute inset-y-0">
@@ -428,6 +477,7 @@ function ScheduleDock({
   onSelectTime,
   onJumpToNow,
   onEditPerson,
+  onMovePerson,
 }: ScheduleDockProps) {
   const [mobileSize, setMobileSize] = useState<MobileDockSize>('half');
   const dragStartY = useRef<number | null>(null);
@@ -526,6 +576,7 @@ function ScheduleDock({
         selectedTime={selectedTime}
         onSelectTime={onSelectTime}
         onEditPerson={onEditPerson}
+        onMovePerson={onMovePerson}
       />
       <MobileTimeline
         rows={rows}
@@ -533,6 +584,7 @@ function ScheduleDock({
         selectedTime={selectedTime}
         onSelectTime={onSelectTime}
         onEditPerson={onEditPerson}
+        onMovePerson={onMovePerson}
       />
     </section>
   );
@@ -652,6 +704,7 @@ export default function App() {
           onSelectTime={setTime}
           onJumpToNow={jumpToNow}
           onEditPerson={openEditModal}
+          onMovePerson={(id, offset) => moveStudent(id, offset, setState)}
         />
 
         {showModal && (
