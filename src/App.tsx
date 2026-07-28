@@ -264,6 +264,22 @@ function TimeMarks({ mobile = false }: { mobile?: boolean }) {
   ));
 }
 
+function TimeLabel({ time }: { time: string }) {
+  const [clock, period] = formatTime(time).split(' ');
+  const [hour, minute] = clock.split(':');
+  return (
+    <span
+      className="inline-grid grid-cols-[2ch_.5ch_2ch_2.25ch] items-baseline tabular-nums"
+      aria-label={formatTime(time)}
+    >
+      <span className="text-right" aria-hidden="true">{hour}</span>
+      <span aria-hidden="true">:</span>
+      <span aria-hidden="true">{minute}</span>
+      <span className="text-right" aria-hidden="true">{period}</span>
+    </span>
+  );
+}
+
 function DesktopTimeline({
   rows,
   selectedMinutes,
@@ -320,10 +336,10 @@ function DesktopTimeline({
             style={{ left: scrubberLeft }}
           />
           <div
-            className="pointer-events-none absolute top-4 z-40 h-4 -translate-x-1/2 rounded-full bg-primary px-2 text-[10px] font-semibold leading-4 text-primary-foreground shadow"
+            className="pointer-events-none absolute top-4 z-40 flex h-4 w-[5.25rem] -translate-x-1/2 items-center justify-center rounded-full bg-primary text-[10px] font-semibold leading-4 text-primary-foreground shadow"
             style={{ left: scrubberLeft }}
           >
-            {formatTime(selectedTime)}
+            <TimeLabel time={selectedTime} />
           </div>
         </div>
       </div>
@@ -460,8 +476,8 @@ function MobileTimeline({
 
       <div className="pointer-events-none absolute inset-y-0 left-1/2 z-30 w-0.5 -translate-x-1/2 bg-primary" />
       <div className="pointer-events-none absolute left-1/2 top-0 z-40 size-4 -translate-x-1/2 rounded-full border-2 border-card bg-primary shadow" />
-      <div className="pointer-events-none absolute left-1/2 top-5 z-40 h-4 -translate-x-1/2 rounded-full bg-primary px-2 text-[10px] font-semibold leading-4 text-primary-foreground shadow">
-        {formatTime(selectedTime)}
+      <div className="pointer-events-none absolute left-1/2 top-5 z-40 flex h-4 w-[5.25rem] -translate-x-1/2 items-center justify-center rounded-full bg-primary text-[10px] font-semibold leading-4 text-primary-foreground shadow">
+        <TimeLabel time={selectedTime} />
       </div>
     </div>
   );
@@ -563,7 +579,7 @@ function ScheduleDock({
 
         <div className="order-1 flex min-w-0 items-center gap-2 sm:order-3 sm:ml-auto" aria-live="polite">
           <span className="truncate text-sm font-bold text-foreground sm:text-base">
-            {formatTime(selectedTime)}
+            <TimeLabel time={selectedTime} />
           </span>
           <Badge variant="secondary">{busyCount} busy</Badge>
           <Badge variant="outline" className="hidden min-[360px]:inline-flex">{freeCount} free</Badge>
