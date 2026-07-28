@@ -224,7 +224,7 @@ function TimeMarks({ mobile = false }: { mobile?: boolean }) {
       style={{ left: `${timelinePercent(minutes)}%` }}
     >
       <div className={cn('w-px bg-border', mobile ? 'h-2.5' : 'h-2')} />
-      <div className="mt-1 -translate-x-1/2 font-mono text-[10px] text-muted-foreground">
+      <div className="mt-1 h-4 -translate-x-1/2 text-[10px] leading-4 text-muted-foreground">
         {formatMinutes(minutes)}
       </div>
     </div>
@@ -249,6 +249,7 @@ function DesktopTimeline({
   const scrubberLeft = `${timelinePercent(selectedMinutes)}%`;
 
   function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     pickTimelineTime(event, onSelectTime);
   }
@@ -268,7 +269,7 @@ function DesktopTimeline({
   }
 
   return (
-    <div className="hidden min-h-0 flex-1 grid-rows-[36px_minmax(0,1fr)] px-4 pb-3 sm:grid">
+    <div className="hidden min-h-0 flex-1 select-none grid-rows-[36px_minmax(0,1fr)] px-4 pb-3 sm:grid">
       <div className="grid grid-cols-[148px_minmax(0,1fr)] gap-x-3">
         <div />
         <div
@@ -286,7 +287,7 @@ function DesktopTimeline({
             style={{ left: scrubberLeft }}
           />
           <div
-            className="pointer-events-none absolute top-4 z-40 -translate-x-1/2 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground shadow"
+            className="pointer-events-none absolute top-4 z-40 h-4 -translate-x-1/2 rounded-full bg-primary px-2 text-[10px] font-semibold leading-4 text-primary-foreground shadow"
             style={{ left: scrubberLeft }}
           >
             {formatTime(selectedTime)}
@@ -382,7 +383,7 @@ function MobileTimeline({
   }
 
   return (
-    <div className="relative min-h-0 flex-1 overflow-hidden sm:hidden">
+    <div className="relative min-h-0 flex-1 select-none overflow-hidden sm:hidden">
       <div
         ref={scrollerRef}
         className="mobile-timeline-scroll h-full max-w-full overflow-auto overscroll-contain"
@@ -426,7 +427,7 @@ function MobileTimeline({
 
       <div className="pointer-events-none absolute inset-y-0 left-1/2 z-30 w-0.5 -translate-x-1/2 bg-primary" />
       <div className="pointer-events-none absolute left-1/2 top-0 z-40 size-4 -translate-x-1/2 rounded-full border-2 border-card bg-primary shadow" />
-      <div className="pointer-events-none absolute left-1/2 top-5 z-40 -translate-x-1/2 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground shadow">
+      <div className="pointer-events-none absolute left-1/2 top-5 z-40 h-4 -translate-x-1/2 rounded-full bg-primary px-2 text-[10px] font-semibold leading-4 text-primary-foreground shadow">
         {formatTime(selectedTime)}
       </div>
     </div>
@@ -495,7 +496,7 @@ function ScheduleDock({
         </Button>
 
         <div className="order-1 flex min-w-0 items-center gap-2 sm:order-3 sm:ml-auto" aria-live="polite">
-          <span className="truncate font-mono text-sm font-bold text-foreground sm:text-base">
+          <span className="truncate text-sm font-bold text-foreground sm:text-base">
             {formatTime(selectedTime)}
           </span>
           <Badge variant="secondary">{busyCount} busy</Badge>
