@@ -6,6 +6,24 @@ export function currentAY(): string {
   return now.getMonth() >= 7 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
 }
 
+export function academicYearOptions(latest: string, count = 5): string[] {
+  const start = parseInt(latest, 10);
+  return Array.from({ length: count }, (_, index) => `${start - index}-${start - index + 1}`);
+}
+
+export async function latestPublishedAY(): Promise<string> {
+  const current = currentAY();
+  const nextStart = parseInt(current, 10) + 1;
+  const next = `${nextStart}-${nextStart + 1}`;
+  try {
+    const response = await fetch(`${API}/${next}/moduleList.json`, { method: 'HEAD' });
+    if (response.ok) return next;
+  } catch {
+    // Fall back to the calendar-derived academic year when offline.
+  }
+  return current;
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface NUSModsLessonSlot {
@@ -226,6 +244,7 @@ function validateLessonIndices(lessons: LessonSlot[], selected: Set<number> | un
 export function resolveSchedule(
   parsed: ParsedTimetable | null,
   moduleCache: Record<string, Record<string, LessonSlot[]>>,
+  semester = parsed?.semester,
 ): ResolvedSlot[] {
   if (!parsed) return [];
 
@@ -235,7 +254,7 @@ export function resolveSchedule(
   for (const [moduleCode, selectedLessons] of Object.entries(parsed.modules)) {
     if (hidden.has(moduleCode)) continue;
 
-    const semData = moduleCache[moduleCode]?.[parsed.semester];
+    const semData = moduleCache[moduleCode]?.[semester ?? parsed.semester];
     if (!semData) continue;
 
     const selectedIndicesByType = new Map<string, Set<number>>();

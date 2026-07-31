@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { GripVertical, MapPinOff, Settings, UserPlus } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import {
   Dialog,
   DialogContent,
@@ -17,8 +18,11 @@ import {
 import { cn } from '@/lib/utils';
 import {
   DAYS,
+  academicYearOptions,
+  currentAY,
   formatMinutes,
   formatTime,
+  latestPublishedAY,
   minutesToTime,
   parseNusmodsUrl,
   resolveSchedule,
@@ -36,6 +40,8 @@ const DAY_START = 8 * 60;
 const DAY_END = 22 * 60;
 const TOTAL_MINUTES = DAY_END - DAY_START;
 const MOBILE_TIMELINE_WIDTH = 1120;
+const MOBILE_TIMELINE_HEADER_HEIGHT = 40;
+const MOBILE_DOCK_TOP_GAP = 16;
 const TIME_MARKS = Array.from({ length: TOTAL_MINUTES / 60 + 1 }, (_, index) => (
   DAY_START + index * 60
 ));
@@ -58,10 +64,10 @@ interface DragPreview {
 
 interface ScheduleDockProps {
   schedules: Schedule[];
+  selectedSemester: string;
   selectedDay: Day;
   selectedTime: string;
-  busyCount: number;
-  freeCount: number;
+  onSelectSemester: (semester: string) => void;
   onSelectDay: (day: Day) => void;
   onSelectTime: (time: string) => void;
   onJumpToNow: () => void;
@@ -347,7 +353,7 @@ function TimeMarks({ mobile = false }: { mobile?: boolean }) {
       style={{ left: `${timelinePercent(minutes)}%` }}
     >
       <div className={cn('w-px bg-border', mobile ? 'h-2.5' : 'h-2')} />
-      <div className="mt-1 h-4 -translate-x-1/2 text-[10px] leading-4 text-muted-foreground">
+      <div className="mt-1 h-4 -translate-x-1/2 whitespace-nowrap text-[10px] leading-4 text-muted-foreground">
         {formatMinutes(minutes)}
       </div>
     </div>
@@ -396,7 +402,7 @@ function DesktopTimeline({
   }
 
   return (
-    <div className="hidden min-h-0 flex-1 select-none grid-rows-[36px_minmax(0,1fr)] px-4 pb-3 sm:grid">
+    <div className="hidden min-h-0 flex-1 select-none grid-rows-[36px_minmax(0,1fr)] pb-3 pl-4 pr-6 sm:grid">
       <div className="grid grid-cols-[148px_minmax(0,1fr)] gap-x-3">
         <div />
         <div
@@ -531,7 +537,7 @@ function MobileTimeline({
         tabIndex={0}
       >
         <div className="mobile-timeline-content relative min-h-full">
-          <div className="relative h-10">
+          <div className="sticky top-0 z-30 h-10 bg-card/95 backdrop-blur-sm">
             <div className="mobile-timeline-zone absolute inset-y-0">
               <TimeMarks mobile />
             </div>
@@ -572,19 +578,16 @@ function MobileTimeline({
 
       <div className="pointer-events-none absolute inset-y-0 left-1/2 z-30 w-0.5 -translate-x-1/2 bg-primary" />
       <div className="pointer-events-none absolute left-1/2 top-0 z-40 size-4 -translate-x-1/2 rounded-full border-2 border-card bg-primary shadow" />
-      <div className="pointer-events-none absolute left-1/2 top-5 z-40 h-4 -translate-x-1/2 rounded-full bg-primary px-2 text-[10px] font-semibold leading-4 text-primary-foreground shadow">
-        {formatTime(selectedTime)}
-      </div>
     </div>
   );
 }
 
 function ScheduleDock({
   schedules,
+  selectedSemester,
   selectedDay,
   selectedTime,
-  busyCount,
-  freeCount,
+  onSelectSemester,
   onSelectDay,
   onSelectTime,
   onJumpToNow,
@@ -607,6 +610,15 @@ function ScheduleDock({
     };
   });
 
+  function resizeLimits(handle: HTMLButtonElement) {
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const controlsHeight = handle.nextElementSibling?.getBoundingClientRect().height ?? 120;
+    const safeArea = parseFloat(getComputedStyle(handle.parentElement!).paddingBottom) || 0;
+    const maximum = viewportHeight - MOBILE_DOCK_TOP_GAP;
+    const minimum = Math.min(maximum, Math.ceil(handle.offsetHeight + controlsHeight + MOBILE_TIMELINE_HEADER_HEIGHT + safeArea));
+    return { viewportHeight, minimum, maximum };
+  }
+
   return (
     <section
       className="schedule-dock z-10 flex flex-col overflow-hidden border bg-card/95 text-card-foreground shadow-2xl backdrop-blur-md"
@@ -622,22 +634,27 @@ function ScheduleDock({
         }}
         onPointerMove={(event) => {
           if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-          const controlsHeight = event.currentTarget.nextElementSibling?.getBoundingClientRect().height ?? 120;
-          const minimumHeight = Math.ceil(event.currentTarget.offsetHeight + controlsHeight + 4);
-          const height = Math.min(window.innerHeight - 16, Math.max(minimumHeight, window.innerHeight - event.clientY));
+          const { viewportHeight, minimum, maximum } = resizeLimits(event.currentTarget);
+          const height = Math.min(maximum, Math.max(minimum, viewportHeight - event.clientY));
           onMobileHeightChange(height);
         }}
         onPointerUp={(event) => {
+          const { viewportHeight, minimum, maximum } = resizeLimits(event.currentTarget);
+          const height = Math.min(maximum, Math.max(minimum, viewportHeight - event.clientY));
+          const snapPoints = [minimum, Math.max(minimum, viewportHeight * 0.5), maximum];
+          onMobileHeightChange(snapPoints.reduce((closest, point) => (
+            Math.abs(point - height) < Math.abs(closest - height) ? point : closest
+          )));
           event.currentTarget.releasePointerCapture(event.pointerId);
         }}
       >
         <span className="h-0.5 w-8 rounded-full bg-border" />
       </button>
       <TimelineControls
+        selectedSemester={selectedSemester}
         selectedDay={selectedDay}
         selectedTime={selectedTime}
-        busyCount={busyCount}
-        freeCount={freeCount}
+        onSelectSemester={onSelectSemester}
         onSelectDay={onSelectDay}
         onJumpToNow={onJumpToNow}
       />
@@ -670,40 +687,56 @@ export default function App() {
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [selectedDay, setDay] = useState<Day>(() => todayAsDay());
   const [selectedTime, setTime] = useState(() => currentTime());
-  const [mobileDockHeight, setMobileDockHeight] = useState(() => window.innerHeight * 0.5);
+  const [selectedSemester, setSemester] = useState('1');
+  const [academicYear, setAcademicYear] = useState<string | null>(null);
+  const [academicYears, setAcademicYears] = useState(() => academicYearOptions(currentAY()));
+  const [mobileDockHeight, setMobileDockHeight] = useState(() => (
+    (window.visualViewport?.height ?? window.innerHeight) * 0.5
+  ));
   const startedFetches = useRef(new Set<string>());
 
   useEffect(() => {
-    if (state.students.length === 0) return;
+    let cancelled = false;
+    void latestPublishedAY().then((latest) => {
+      if (cancelled) return;
+      setAcademicYears(academicYearOptions(latest));
+      setAcademicYear(latest);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!academicYear || state.students.length === 0) return;
     if (!state.venueLoaded) void loadVenues(setState);
+    const yearCache = state.moduleCache[academicYear] ?? {};
 
     state.students.forEach((student) => {
       const parsed = parseNusmodsUrl(student.url);
       if (!parsed) return;
-      const missing = Object.keys(parsed.modules).some((moduleCode) => !state.moduleCache[moduleCode]);
-      if (!missing || startedFetches.current.has(student.id)) return;
-      startedFetches.current.add(student.id);
-      void fetchModulesFor(student, state.moduleCache, setState).finally(() => {
-        startedFetches.current.delete(student.id);
-      });
+      const missing = Object.keys(parsed.modules).some((moduleCode) => !yearCache[moduleCode]);
+      const fetchKey = `${academicYear}:${student.id}:${student.url}`;
+      if (!missing || startedFetches.current.has(fetchKey)) return;
+      startedFetches.current.add(fetchKey);
+      void fetchModulesFor(student, academicYear, yearCache, setState);
     });
-  }, [state.students, state.moduleCache, state.venueLoaded]);
+  }, [academicYear, state.students, state.moduleCache, state.venueLoaded]);
 
   const schedules = useMemo(
     () => state.students.map((student) => ({
       student,
-      slots: resolveSchedule(parseNusmodsUrl(student.url), state.moduleCache),
+      slots: resolveSchedule(
+        parseNusmodsUrl(student.url),
+        academicYear ? state.moduleCache[academicYear] ?? {} : {},
+        selectedSemester,
+      ),
     })),
-    [state.students, state.moduleCache],
+    [academicYear, selectedSemester, state.students, state.moduleCache],
   );
 
   const activeSchedules = schedules.map(({ student, slots }) => ({
     student,
     slots: atTime(slots.filter((slot) => slot.day === selectedDay), selectedTime),
   }));
-  const busyCount = activeSchedules.filter(({ slots }) => slots.length > 0).length;
-  const freeCount = state.students.length - busyCount;
-
   const mapMarkers: MapMarker[] = activeSchedules.flatMap(({ student, slots }) => {
     const seen = new Set<string>();
     return slots.flatMap((slot) => {
@@ -759,6 +792,19 @@ export default function App() {
           <MapView markers={mapMarkers} bottomInset={mobileDockHeight} />
         </main>
 
+        <NativeSelect
+          value={academicYear ?? ''}
+          onChange={(event) => setAcademicYear(event.target.value)}
+          disabled={!academicYear}
+          aria-label="Academic year"
+          className="absolute left-3 top-3 z-10 w-36 shadow-lg sm:left-4 sm:top-4 [&_select]:h-11! [&_select]:bg-card/95"
+        >
+          {!academicYear && <NativeSelectOption value="">Loading AY…</NativeSelectOption>}
+          {academicYears.map(year => (
+            <NativeSelectOption key={year} value={year}>AY {year.replace('-', '/')}</NativeSelectOption>
+          ))}
+        </NativeSelect>
+
         <Button
           type="button"
           size="lg"
@@ -771,10 +817,10 @@ export default function App() {
 
         <ScheduleDock
           schedules={schedules}
+          selectedSemester={selectedSemester}
           selectedDay={selectedDay}
           selectedTime={selectedTime}
-          busyCount={busyCount}
-          freeCount={freeCount}
+          onSelectSemester={setSemester}
           onSelectDay={setDay}
           onSelectTime={setTime}
           onJumpToNow={jumpToNow}

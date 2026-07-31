@@ -13,7 +13,8 @@ export interface Student {
 
 export type StudentPatch = Partial<Pick<Student, 'name' | 'color' | 'url'>>;
 
-export type ModuleCache = Record<string, Record<string, LessonSlot[]>>;
+export type AcademicYearModuleCache = Record<string, Record<string, LessonSlot[]>>;
+export type ModuleCache = Record<string, AcademicYearModuleCache>;
 
 export interface AppState {
   students: Student[];
@@ -59,7 +60,8 @@ export async function loadVenues(setState: SetState): Promise<void> {
 
 export async function fetchModulesFor(
   student: Student,
-  currentCache: ModuleCache,
+  academicYear: string,
+  currentCache: AcademicYearModuleCache,
   setState: SetState,
 ): Promise<void> {
   const parsed = parseNusmodsUrl(student.url);
@@ -69,22 +71,31 @@ export async function fetchModulesFor(
   if (needed.length === 0) return;
 
   setState(s => ({ ...s, studentLoading: { ...s.studentLoading, [student.id]: true } }));
-  try {
-    const results = await Promise.all(
-      needed.map(async code => ({ code, lessons: await fetchModuleLessons(code) }))
-    );
-    setState(s => {
-      const newCache = { ...s.moduleCache };
-      for (const { code, lessons } of results) newCache[code] = lessons;
-      return { ...s, moduleCache: newCache, studentLoading: { ...s.studentLoading, [student.id]: false } };
-    });
-  } catch (e) {
-    setState(s => ({
+  const results = await Promise.all(needed.map(async code => {
+    try {
+      return { code, lessons: await fetchModuleLessons(code, academicYear), error: '' };
+    } catch (error) {
+      return {
+        code,
+        lessons: {} as Record<string, LessonSlot[]>,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }));
+  setState(s => {
+    const yearCache = { ...s.moduleCache[academicYear] };
+    for (const { code, lessons } of results) yearCache[code] = lessons;
+    const errors = results.flatMap(result => result.error ? [result.error] : []);
+    const studentErrors = { ...s.studentErrors };
+    if (errors.length) studentErrors[student.id] = errors.join(', ');
+    else delete studentErrors[student.id];
+    return {
       ...s,
+      moduleCache: { ...s.moduleCache, [academicYear]: yearCache },
       studentLoading: { ...s.studentLoading, [student.id]: false },
-      studentErrors: { ...s.studentErrors, [student.id]: e instanceof Error ? e.message : String(e) },
-    }));
-  }
+      studentErrors,
+    };
+  });
 }
 
 export function addStudent(
