@@ -578,9 +578,6 @@ function MobileTimeline({
 
       <div className="pointer-events-none absolute inset-y-0 left-1/2 z-30 w-0.5 -translate-x-1/2 bg-primary" />
       <div className="pointer-events-none absolute left-1/2 top-0 z-40 size-4 -translate-x-1/2 rounded-full border-2 border-card bg-primary shadow" />
-      <div className="pointer-events-none absolute left-1/2 top-5 z-40 h-4 -translate-x-1/2 rounded-full bg-primary px-2 text-[10px] font-semibold leading-4 text-primary-foreground shadow">
-        {formatTime(selectedTime)}
-      </div>
     </div>
   );
 }
@@ -656,6 +653,7 @@ function ScheduleDock({
       <TimelineControls
         selectedSemester={selectedSemester}
         selectedDay={selectedDay}
+        selectedTime={selectedTime}
         onSelectSemester={onSelectSemester}
         onSelectDay={onSelectDay}
         onJumpToNow={onJumpToNow}
