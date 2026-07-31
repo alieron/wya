@@ -40,6 +40,8 @@ const DAY_START = 8 * 60;
 const DAY_END = 22 * 60;
 const TOTAL_MINUTES = DAY_END - DAY_START;
 const MOBILE_TIMELINE_WIDTH = 1120;
+const MOBILE_TIMELINE_HEADER_HEIGHT = 40;
+const MOBILE_DOCK_TOP_GAP = 16;
 const TIME_MARKS = Array.from({ length: TOTAL_MINUTES / 60 + 1 }, (_, index) => (
   DAY_START + index * 60
 ));
@@ -351,7 +353,7 @@ function TimeMarks({ mobile = false }: { mobile?: boolean }) {
       style={{ left: `${timelinePercent(minutes)}%` }}
     >
       <div className={cn('w-px bg-border', mobile ? 'h-2.5' : 'h-2')} />
-      <div className="mt-1 h-4 -translate-x-1/2 text-[10px] leading-4 text-muted-foreground">
+      <div className="mt-1 h-4 -translate-x-1/2 whitespace-nowrap text-[10px] leading-4 text-muted-foreground">
         {formatMinutes(minutes)}
       </div>
     </div>
@@ -400,7 +402,7 @@ function DesktopTimeline({
   }
 
   return (
-    <div className="hidden min-h-0 flex-1 select-none grid-rows-[36px_minmax(0,1fr)] px-4 pb-3 sm:grid">
+    <div className="hidden min-h-0 flex-1 select-none grid-rows-[36px_minmax(0,1fr)] pb-3 pl-4 pr-6 sm:grid">
       <div className="grid grid-cols-[148px_minmax(0,1fr)] gap-x-3">
         <div />
         <div
@@ -535,7 +537,7 @@ function MobileTimeline({
         tabIndex={0}
       >
         <div className="mobile-timeline-content relative min-h-full">
-          <div className="relative h-10">
+          <div className="sticky top-0 z-30 h-10 bg-card/95 backdrop-blur-sm">
             <div className="mobile-timeline-zone absolute inset-y-0">
               <TimeMarks mobile />
             </div>
@@ -611,6 +613,15 @@ function ScheduleDock({
     };
   });
 
+  function resizeLimits(handle: HTMLButtonElement) {
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const controlsHeight = handle.nextElementSibling?.getBoundingClientRect().height ?? 120;
+    const safeArea = parseFloat(getComputedStyle(handle.parentElement!).paddingBottom) || 0;
+    const maximum = viewportHeight - MOBILE_DOCK_TOP_GAP;
+    const minimum = Math.min(maximum, Math.ceil(handle.offsetHeight + controlsHeight + MOBILE_TIMELINE_HEADER_HEIGHT + safeArea));
+    return { viewportHeight, minimum, maximum };
+  }
+
   return (
     <section
       className="schedule-dock z-10 flex flex-col overflow-hidden border bg-card/95 text-card-foreground shadow-2xl backdrop-blur-md"
@@ -626,12 +637,17 @@ function ScheduleDock({
         }}
         onPointerMove={(event) => {
           if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-          const controlsHeight = event.currentTarget.nextElementSibling?.getBoundingClientRect().height ?? 120;
-          const minimumHeight = Math.ceil(event.currentTarget.offsetHeight + controlsHeight + 4);
-          const height = Math.min(window.innerHeight - 16, Math.max(minimumHeight, window.innerHeight - event.clientY));
+          const { viewportHeight, minimum, maximum } = resizeLimits(event.currentTarget);
+          const height = Math.min(maximum, Math.max(minimum, viewportHeight - event.clientY));
           onMobileHeightChange(height);
         }}
         onPointerUp={(event) => {
+          const { viewportHeight, minimum, maximum } = resizeLimits(event.currentTarget);
+          const height = Math.min(maximum, Math.max(minimum, viewportHeight - event.clientY));
+          const snapPoints = [minimum, Math.max(minimum, viewportHeight * 0.5), maximum];
+          onMobileHeightChange(snapPoints.reduce((closest, point) => (
+            Math.abs(point - height) < Math.abs(closest - height) ? point : closest
+          )));
           event.currentTarget.releasePointerCapture(event.pointerId);
         }}
       >
@@ -676,7 +692,9 @@ export default function App() {
   const [selectedSemester, setSemester] = useState('1');
   const [academicYear, setAcademicYear] = useState<string | null>(null);
   const [academicYears, setAcademicYears] = useState(() => academicYearOptions(currentAY()));
-  const [mobileDockHeight, setMobileDockHeight] = useState(() => window.innerHeight * 0.5);
+  const [mobileDockHeight, setMobileDockHeight] = useState(() => (
+    (window.visualViewport?.height ?? window.innerHeight) * 0.5
+  ));
   const startedFetches = useRef(new Set<string>());
 
   useEffect(() => {
