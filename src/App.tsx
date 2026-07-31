@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { GripVertical, MapPinOff, Settings, UserPlus } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import {
   Dialog,
   DialogContent,
@@ -17,8 +18,11 @@ import {
 import { cn } from '@/lib/utils';
 import {
   DAYS,
+  academicYearOptions,
+  currentAY,
   formatMinutes,
   formatTime,
+  latestPublishedAY,
   minutesToTime,
   parseNusmodsUrl,
   resolveSchedule,
@@ -58,10 +62,10 @@ interface DragPreview {
 
 interface ScheduleDockProps {
   schedules: Schedule[];
+  selectedSemester: string;
   selectedDay: Day;
   selectedTime: string;
-  busyCount: number;
-  freeCount: number;
+  onSelectSemester: (semester: string) => void;
   onSelectDay: (day: Day) => void;
   onSelectTime: (time: string) => void;
   onJumpToNow: () => void;
@@ -581,10 +585,10 @@ function MobileTimeline({
 
 function ScheduleDock({
   schedules,
+  selectedSemester,
   selectedDay,
   selectedTime,
-  busyCount,
-  freeCount,
+  onSelectSemester,
   onSelectDay,
   onSelectTime,
   onJumpToNow,
@@ -634,10 +638,9 @@ function ScheduleDock({
         <span className="h-0.5 w-8 rounded-full bg-border" />
       </button>
       <TimelineControls
+        selectedSemester={selectedSemester}
         selectedDay={selectedDay}
-        selectedTime={selectedTime}
-        busyCount={busyCount}
-        freeCount={freeCount}
+        onSelectSemester={onSelectSemester}
         onSelectDay={onSelectDay}
         onJumpToNow={onJumpToNow}
       />
@@ -670,40 +673,54 @@ export default function App() {
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [selectedDay, setDay] = useState<Day>(() => todayAsDay());
   const [selectedTime, setTime] = useState(() => currentTime());
+  const [selectedSemester, setSemester] = useState('1');
+  const [academicYear, setAcademicYear] = useState<string | null>(null);
+  const [academicYears, setAcademicYears] = useState(() => academicYearOptions(currentAY()));
   const [mobileDockHeight, setMobileDockHeight] = useState(() => window.innerHeight * 0.5);
   const startedFetches = useRef(new Set<string>());
 
   useEffect(() => {
-    if (state.students.length === 0) return;
+    let cancelled = false;
+    void latestPublishedAY().then((latest) => {
+      if (cancelled) return;
+      setAcademicYears(academicYearOptions(latest));
+      setAcademicYear(latest);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!academicYear || state.students.length === 0) return;
     if (!state.venueLoaded) void loadVenues(setState);
+    const yearCache = state.moduleCache[academicYear] ?? {};
 
     state.students.forEach((student) => {
       const parsed = parseNusmodsUrl(student.url);
       if (!parsed) return;
-      const missing = Object.keys(parsed.modules).some((moduleCode) => !state.moduleCache[moduleCode]);
-      if (!missing || startedFetches.current.has(student.id)) return;
-      startedFetches.current.add(student.id);
-      void fetchModulesFor(student, state.moduleCache, setState).finally(() => {
-        startedFetches.current.delete(student.id);
-      });
+      const missing = Object.keys(parsed.modules).some((moduleCode) => !yearCache[moduleCode]);
+      const fetchKey = `${academicYear}:${student.id}:${student.url}`;
+      if (!missing || startedFetches.current.has(fetchKey)) return;
+      startedFetches.current.add(fetchKey);
+      void fetchModulesFor(student, academicYear, yearCache, setState);
     });
-  }, [state.students, state.moduleCache, state.venueLoaded]);
+  }, [academicYear, state.students, state.moduleCache, state.venueLoaded]);
 
   const schedules = useMemo(
     () => state.students.map((student) => ({
       student,
-      slots: resolveSchedule(parseNusmodsUrl(student.url), state.moduleCache),
+      slots: resolveSchedule(
+        parseNusmodsUrl(student.url),
+        academicYear ? state.moduleCache[academicYear] ?? {} : {},
+        selectedSemester,
+      ),
     })),
-    [state.students, state.moduleCache],
+    [academicYear, selectedSemester, state.students, state.moduleCache],
   );
 
   const activeSchedules = schedules.map(({ student, slots }) => ({
     student,
     slots: atTime(slots.filter((slot) => slot.day === selectedDay), selectedTime),
   }));
-  const busyCount = activeSchedules.filter(({ slots }) => slots.length > 0).length;
-  const freeCount = state.students.length - busyCount;
-
   const mapMarkers: MapMarker[] = activeSchedules.flatMap(({ student, slots }) => {
     const seen = new Set<string>();
     return slots.flatMap((slot) => {
@@ -759,6 +776,19 @@ export default function App() {
           <MapView markers={mapMarkers} bottomInset={mobileDockHeight} />
         </main>
 
+        <NativeSelect
+          value={academicYear ?? ''}
+          onChange={(event) => setAcademicYear(event.target.value)}
+          disabled={!academicYear}
+          aria-label="Academic year"
+          className="absolute left-3 top-3 z-10 w-36 shadow-lg sm:left-4 sm:top-4 [&_select]:h-11! [&_select]:bg-card/95"
+        >
+          {!academicYear && <NativeSelectOption value="">Loading AY…</NativeSelectOption>}
+          {academicYears.map(year => (
+            <NativeSelectOption key={year} value={year}>AY {year.replace('-', '/')}</NativeSelectOption>
+          ))}
+        </NativeSelect>
+
         <Button
           type="button"
           size="lg"
@@ -771,10 +801,10 @@ export default function App() {
 
         <ScheduleDock
           schedules={schedules}
+          selectedSemester={selectedSemester}
           selectedDay={selectedDay}
           selectedTime={selectedTime}
-          busyCount={busyCount}
-          freeCount={freeCount}
+          onSelectSemester={setSemester}
           onSelectDay={setDay}
           onSelectTime={setTime}
           onJumpToNow={jumpToNow}
